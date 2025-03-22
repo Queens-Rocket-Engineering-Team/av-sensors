@@ -12,6 +12,7 @@ Written by:
     Brent Naumann
     Tristan Alderson
     Kennan Bays
+    Caelan Donovan
 Flash capability proveded by: 
     Kennan Bays
 
@@ -77,13 +78,16 @@ const uint32_t TABLE_SIZE = 16646144;
 #define APO_GRACE   500 // [ms] Time for measurements to be above threshold before Apogee is declared
 
 //--- DESCENT SETTINGS
-#define DEC_DATAINT 20 //  [ms] interval bewteen each log to FLASH.
+#define DROGUE_DATAINT 20 //  [ms] interval between each log to FLASH.
+#define MAIN_DATAINTFAST 500 // [ms] interval between each log to FLASH - slowed rate before 5000 ms
+#define MAIN_DATAINTSLOW 1000 // [ms] interval between each log to FLASH - slowed rate after 5000 ms
 #define LAND_THRESHOLD -0.3//[m/s] Velocity Threshold to declare land
 #define LAND_GRACE  2000 // [ms] Time for measurements to be above threshold before Landing is declared
 const uint16_t MAIN_DEPLOY_THRESHOLD = 1500/3.281;
 
 //--- LAND SETTINGS
-#define LAND_DATAINT 100  //[ms] interval bewteen each log to FLASH.
+#define LAND_DATAINT 1000  //[ms] interval between each log to FLASH.
+#define LAND_DATAINT 2000 //[ms] interval between each log to FLASH.
 
 
 
@@ -136,6 +140,10 @@ unsigned long prevTime;
 //data logging and CANBUS
 unsigned long lastLog; // Time of last data log
 unsigned long lastSend; // Time of last CANBUS send
+
+//extra timers
+int mainTimer
+int landingTimer
 
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
@@ -362,7 +370,7 @@ void loop(){
 
     case 3:   //Descending with drogue
       //logging data
-      if( millis() - lastLog >= DEC_DATAINT){
+      if( millis() - lastLog >= DROGUE_DATAINT){
         logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
         lastLog = millis();
       }//if
@@ -372,18 +380,28 @@ void loop(){
         digitalWrite(FIRE_MAIN_PIN, HIGH);
         softSerial.println(F("FIRING MAIN"));
         STATE = 4;
+        mainTimer = millis();
       }//if
       break;
       
     case 4:   //descending with main
       //logging data
-      if( millis() - lastLog >= DEC_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
-        lastLog = millis();
+      if(millis() - mainTimer <= 5000){
+        if(millis() - lastLog >= MAIN_DATAINTFAST){
+          logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+          lastLog = millis();
+        }//if
+      }//if
+      else if(millis() - mainTimer > 5000){
+        if(millis() - lastLog >= MAIN_DATAINTSLOW){
+          logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+          lastLog = millis();
+        }//if
       }//if
       
       //perform Landing check
       if(detectLand(alt)){
+        landingTimer = millis();
         STATE = 5;
         softSerial.println("LANDED");
       }//if
@@ -394,10 +412,25 @@ void loop(){
       
     case 5:   // Landed
       //logging data
-      if( millis() - lastLog >= LAND_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
-        lastLog = millis();
-      }//if
+      if (millis() - landingTimer <= 1800000){
+        if( millis() - lastLog >= LAND_DATAINT){
+          logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+          lastLog = millis();
+
+        }//if
+      }
+      //slower logging rate after 30 mins to save power
+      else if (millis() - landingTimer > 1800000 && millis() - landingTimer < 3600000){
+        if( millis() - lastLog >= LAND_SLOW_DATAINT){
+          logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+          lastLog = millis();
+
+        }//if
+      }
+      //power save mode after 60 mins
+      else if (millis() - landingTimer > 36000000){
+        
+      }
       break;
 
   }//switch
