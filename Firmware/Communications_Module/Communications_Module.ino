@@ -1,7 +1,10 @@
 /*
- * Quick SPAC SRAD firmare for communicataions module
- * 
- * Jun.16.2024
+ * Authors: Kennan Bays
+ * Hardware: QRET Comms Module Rev2 (WAGGLE)
+ * Env: Arduino 1.8.10, STM32duino 2.7.1
+ * Created: ~Jun.16.2024
+ * Updated: May.26.2025
+ * Purpose: SRAD firmware for communications module.
  */
 
 #include "CANPackets.h"
@@ -15,9 +18,13 @@
 //#include "flashTable.h"
 
 
+// TODO: Implement proper dual-wave driving of the buzzer
+#define BUZZER_PIN BUZZER_A_PIN
+
+
 //TODO: Replace Defines
 #define SERIAL_ENABLE true
-#define SERIAL_BAUD 38400
+#define SERIAL_BAUD 38400 // NOTE: While using software serial, dont push above 38400
 #define CANBUS_BAUD 500000 //500kbps
 
 //Buzzer Settings
@@ -41,9 +48,9 @@ uint32_t powerDownInitTime = 0; //10min
 bool inPowerDown = false;
 
 
-
-// Software softSerial object
-SoftwareSerial softSerial(USB_DM_PIN, USB_DP_PIN); // RX, TX
+// Hardware serial object for USB comms
+// NOTE: This had to be changed to software serial as the TX/RX pins are flipped on hardware.
+SoftwareSerial usb(USB_RX_PIN, USB_TX_PIN);
 
 // CANBus objects
 STM32_CAN can( CAN1, ALT ); //CAN1 ALT is PB8+PB9
@@ -56,15 +63,11 @@ const uint8_t TABLE_COLS = 3;
 const uint32_t TABLE_SIZE = 204800; //4096000
 //FlashTable table = FlashTable(TABLE_COLS, 16384, TABLE_SIZE, TABLE_NAME, 256);
 
-SPIClass newSPI(RF_MOSI_PIN, RF_MISO_PIN, RF_SCK_PIN);
 
-// RFM95 has the following connections:
-// NSS pin:   10
-// DIO0 pin:  2
-// RESET pin: 9
-// DIO1 pin:  3
+// SX1262 (LoRa1262F30) objects
+SPIClass newSPI(RF_MOSI_PIN, RF_MISO_PIN, RF_SCK_PIN);
 Module* mod;
-RFM95* radio;
+SX1262* radio;
 int transmissionState = RADIOLIB_ERR_NONE;
 volatile bool transmittedFlag = false; // flag to indicate that a packet was sent
 
@@ -81,16 +84,16 @@ void setFlag(void) {
 }//setFlag()
 
 void radioInit() {
-// initialize RFM95 with default settings
-  Serial.print(F("[RFM95] Initializing ... "));
+// initialize SX1262 with default settings
+  usb.print(F("[SX1262] Initializing ... "));
   radio->reset();
   delay(100);
   int state = radio->begin();
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
+    usb.println(F("success!"));
   } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
+    usb.print(F("failed, code "));
+    usb.println(state);
     while (true) {
       digitalWrite(STATUS_LED_PIN, HIGH);
       delay(500);
@@ -103,30 +106,30 @@ void radioInit() {
   //radio->forceLDRO(true);
 
   if (radio->setFrequency(FREQUENCY) == RADIOLIB_ERR_INVALID_FREQUENCY) {
-    Serial.println(F("Selected frequency is invalid for this module!"));
+    usb.println(F("Selected frequency is invalid for this module!"));
     while (true);
   }
   if (radio->setBandwidth(BANDWIDTH) == RADIOLIB_ERR_INVALID_BANDWIDTH) {
-    Serial.println(F("Selected bandwidth is invalid for this module!"));
+    usb.println(F("Selected bandwidth is invalid for this module!"));
     while (true);
   }
 
   // set spreading factor to 10
   if (radio->setSpreadingFactor(SPREADING_RATE) == RADIOLIB_ERR_INVALID_SPREADING_FACTOR) {
-    Serial.println(F("Selected spreading factor is invalid for this module!"));
+    usb.println(F("Selected spreading factor is invalid for this module!"));
     while (true);
   }
 
   // set coding rate to 6
   if (radio->setCodingRate(CODING_RATE) == RADIOLIB_ERR_INVALID_CODING_RATE) {
-    Serial.println(F("Selected coding rate is invalid for this module!"));
+    usb.println(F("Selected coding rate is invalid for this module!"));
     while (true);
   }
 
-  // set output power to 17 dBm (accepted range is -3 - 17 dBm)
-  // NOTE: 20 dBm value allows high power operation, but transmission duty cycle MUST NOT exceed 1%
-  if (radio->setOutputPower(17) == RADIOLIB_ERR_INVALID_OUTPUT_POWER) {
-    Serial.println(F("Selected output power is invalid for this module!"));
+  // set output power to 12 dBm (SX1262 max is +22, LoRa1262F30 has amp for up to +30)
+  // TODO: Change this to a higher power. Check how the LoRa1262F30 is designed; does it use an external PA? Do we have to enable that?
+  if (radio->setOutputPower(12) == RADIOLIB_ERR_INVALID_OUTPUT_POWER) {
+    usb.println(F("Selected output power is invalid for this module!"));
     while (true);
   }
   //Enable LoRa CRC
@@ -141,18 +144,19 @@ void radioInit() {
 // Empties all bytes from incoming serial buffer.
 // Used by Debug mode
 void emptySerialBuffer() {
-  while (softSerial.available()) {softSerial.read();}
+  while (usb.available()) {usb.read();}
 }//emptySerialBuffer()
 
 
 void setup() {
   #if defined(SERIAL_ENABLE)
-  softSerial.begin(SERIAL_BAUD);
+  usb.begin(SERIAL_BAUD);
   #endif
   
   // Set pinmodes
   pinMode(STATUS_LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUZZER_A_PIN, OUTPUT);
+  pinMode(BUZZER_B_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
 
   // Set up SPI
@@ -166,7 +170,7 @@ void setup() {
 
   // Initialize Flash Chip
 //  while (!SerialFlash.begin(FLASH_CS_PIN)) {
-//    softSerial.println(F("Connecting to SPI Flash chip..."));
+//    usb.println(F("Connecting to SPI Flash chip..."));
 //    delay(250);
 //    //toggleStatusLED();
 //  }//while
@@ -181,8 +185,8 @@ void setup() {
   
   pinMode(STATUS_LED_PIN, OUTPUT);
   newSPI.begin();
-  mod = new Module(RF_CS_PIN, RF_DIO0_PIN, RF_RESET_PIN, RADIOLIB_NC, newSPI);
-  radio = new RFM95(mod);
+  mod = new Module(RF_CS_PIN, RF_DIO1_PIN, RF_RESET_PIN, RF_BUSY_PIN, newSPI);
+  radio = new SX1262(mod);
   radioInit();
 
 
@@ -198,18 +202,18 @@ void setup() {
 
   // Startup delay - Check to enter debug mode
   uint32_t startTime = millis();
-  while (!softSerial.available() and millis()-startTime < 5000) {}
+  while (!usb.available() and millis()-startTime < 5000) {}
   
-  if (softSerial.available()) {
-    byte d = softSerial.read();
+  if (usb.available()) {
+    byte d = usb.read();
     emptySerialBuffer();
     if (d == 'D') {
-      softSerial.println(F("Entered Debug Mode"));
+      usb.println(F("Entered Debug Mode"));
       //debugMode();
       while (true) {}
     }//if
   }//if
-  softSerial.println(F("Running Normally"));
+  usb.println(F("Running Normally"));
   
 }//setup()
 
@@ -233,6 +237,8 @@ void loop() {
 //    powerDown();
 //  }//if
 
+  usb.println("Ping");
+
   digitalWrite(STATUS_LED_PIN, HIGH);
   uint32_t strtTr = millis();
   //int state = radio->transmit("QRET RF TEST; THIS IS 30 BYTES");
@@ -243,8 +249,8 @@ void loop() {
 
   while (can.read(CAN_RX_msg)) {
 
-    softSerial.print(F("CAN ID = "));
-    softSerial.println(CAN_RX_msg.id, BIN);
+    usb.print(F("CAN ID = "));
+    usb.println(CAN_RX_msg.id, BIN);
     if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_LAT_CANID) {
       //CAN_RX_msg.buf[i]
       packet[0] = CAN_RX_msg.buf[0];
@@ -252,7 +258,7 @@ void loop() {
       packet[2] = CAN_RX_msg.buf[2];
       packet[3] = CAN_RX_msg.buf[3];
       seenGPS = true;
-      softSerial.println(F("Recv LAT"));
+      usb.println(F("Recv LAT"));
     } else if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_LON_CANID) {
       //CAN_RX_msg.buf[i]
       packet[4] = CAN_RX_msg.buf[0];
@@ -260,11 +266,11 @@ void loop() {
       packet[6] = CAN_RX_msg.buf[2];
       packet[7] = CAN_RX_msg.buf[3];
       seenGPS = true;
-      softSerial.println(F("Recv LON"));
+      usb.println(F("Recv LON"));
     } else if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_NUMSAT_CANID) {
       //CAN_RX_msg.buf[i]
       packet[8] = CAN_RX_msg.buf[0];
-      softSerial.println(F("Recv NUM SAT"));
+      usb.println(F("Recv NUM SAT"));
       seenGPS = true;
     } else if (CAN_RX_msg.id == ALTIMETER_MOD_CANID+ALTITUDE_CANID) {
       //CAN_RX_msg.buf[i]
@@ -272,10 +278,10 @@ void loop() {
       packet[10] = CAN_RX_msg.buf[1];
       packet[11] = CAN_RX_msg.buf[2];
       packet[12] = CAN_RX_msg.buf[3];
-      softSerial.println(F("Recv ALTITUDE"));
+      usb.println(F("Recv ALTITUDE"));
     } else if (CAN_RX_msg.id == ALTIMETER_MOD_CANID+FLIGHT_STAGE_CANID) {
       //check if landed
-      softSerial.println(F("Recv FLGHT STAGE"));
+      usb.println(F("Recv FLGHT STAGE"));
       seenAltimeter = true;
 //      if (CAN_RX_msg.buf[0] >= 5) {
 //        if (!pendingPowerDown) {

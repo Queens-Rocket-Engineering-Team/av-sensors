@@ -4,7 +4,9 @@
 #define RGB_DATA_PIN PB3
 #define CAN_RX_PIN PB8
 #define CAN_TX_PIN PB9
+// NOTE: Hardware design error; USB_RX_PIN should have been PB11
 #define USB_RX_PIN PB10
+// NOTE: Hardware design error; USB_TX_PIN should have been PB10
 #define USB_TX_PIN PB11
 #define FLASH_CS_PIN PB12
 #define FLASH_SCK_PIN PB13
