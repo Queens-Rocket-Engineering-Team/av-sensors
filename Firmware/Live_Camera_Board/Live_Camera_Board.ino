@@ -1,7 +1,5 @@
 #include <Wire.h>
 #include <SPI.h>
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BME680.h"
 #include <Tone.h>
 #include <SerialFlash.h>
 #include <SoftwareSerial.h>
@@ -13,7 +11,8 @@
 // Define the serial port for Tramp protocol communication
 #define VTX_CONTROL_PIN PB10  // Button control pin
 
-
+#define USB_BAUD_RATE 115200
+#define LIVE_CAM_BAUD_RATE 9600
 
 // Tramp protocol command structure
 struct TrampCommand {
@@ -68,30 +67,33 @@ uint8_t prevFlightStage = 0;
 uint8_t powerLevel = 2;
 
 //thermistor
-const float Vcc = 3.3;             // STM32 3.3V
+const float Vcc = 3.3;             // STM32 3.3V (TODO: Change this to uint16 & millivolts; works faster)
 const float R_FIXED = 10000.0;     // Fixed resistor value (10k)
 const float BETA = 3435.0;         // B value for NRNE104F3435B2F
 const float T0 = 298.15;           // Reference temp (25°C in Kelvin)
 const float R0 = 10000.0;          // Thermistor resistance at 25°C
 const float calibrationValue = 2;
 
+// USB interface
+HardwareSerial usb(USB_RX_PIN, USB_TX_PIN);
+
 //GLOBAL VARIABLES
 STM32_CAN canb( CAN1, ALT );    //CAN1 ALT is PB8+PB9
 static CAN_message_t CAN_TX_msg ;
 static CAN_message_t CAN_RX_msg;
 
+
 void setup(){
+  // Setup pinmodes
   pinMode(BUZZER_PIN_A, OUTPUT);
   pinMode(STATUS_LED_PIN, OUTPUT);
   pinMode(CAMERA_POWER_PIN, OUTPUT);
   pinMode(VTX_PWR_PIN, OUTPUT);
-
   digitalWrite(STATUS_LED_PIN, HIGH);
   digitalWrite(VTX_PWR_PIN, HIGH);
 
-  // Start USB debugging
-  // Configure I2C bus
-  Serial.begin(115200);
+  // Start USB debugging  
+  usb.begin(USB_BAUD_RATE);
 
   // Configure SPI
   SPI.setSCLK(FLASH_SCK_PIN);
@@ -99,7 +101,7 @@ void setup(){
   SPI.setMOSI(FLASH_MOSI_PIN);
 
   //Configure Buzzer
-  digitalWrite(BUZZER_PIN_B,LOW);
+  digitalWrite(BUZZER_PIN_B, LOW);
 
   //LED FLASHES TO ALLOW FOR SERIAL OPEN
   for (int i=0 ; i <5 ; i++){
@@ -114,21 +116,21 @@ void setup(){
   tone(BUZZER_PIN_A, BUZZER_TONE);
   delay(BEEP_LENGTH);
   noTone(BUZZER_PIN_A);
-  Serial.println("STARTED");
+  usb.println("STARTED");
 
   analogReadResolution(12);
 
-  Serial.println("[MDE] ENTER D FOR DEBUG");
+  usb.println("[MDE] ENTER D FOR DEBUG");
   digitalWrite(STATUS_LED_PIN,HIGH);
 
   uint32_t startTime = millis();
-  while (!Serial.available() and millis()-startTime < 5000) {}
+  while (!usb.available() and millis()-startTime < 5000) {}
 
   // Prompt for entering debug mode
-  if (Serial.available()) {
-    byte d = Serial.read();
+  if (usb.available()) {
+    byte d = usb.read();
     emptySerialBuffer();
-    Serial.println("[MDE] Entered Debug Mode");
+    usb.println("[MDE] Entered Debug Mode");
     debugMode();
     while (true) {}
   }//if
@@ -140,7 +142,7 @@ void setup(){
   canb.begin(); //automatic retransmission can be done using arg "true"
   canb.setBaudRate(500000); //500kbps
 
-  Serial.println("TEST");
+  usb.println("TEST");
 
   // Initialize Tramp protocol serial (8N1, 9600 baud)
   Serial2.setTx(PB10);  // Explicit TX pin
@@ -151,9 +153,9 @@ void setup(){
   
   // Send PIT mode command with verification
   if (setPitMode(true)) {
-    Serial.println("PIT mode activated (Green LED should be solid)");
+    usb.println("PIT mode activated (Green LED should be solid)");
   } else {
-    Serial.println("Failed! Check wiring/baud rate");
+    usb.println("Failed! Check wiring/baud rate");
   }
 }
 
@@ -166,7 +168,7 @@ void setup(){
 // Empties all bytes from incoming serial buffer.
 // Used by Debug mode
 void emptySerialBuffer() {
-  while (Serial.available()) {Serial.read();}
+  while (usb.available()) {usb.read();}
 }//emptySerialBuffer()
 
 // Called when Debug mode is activated;
@@ -180,19 +182,19 @@ void debugMode() {
 
   while (true) {
     emptySerialBuffer();
-    while (!Serial.available()) {}
-    uint8_t cmd = Serial.read();
+    while (!usb.available()) {}
+    uint8_t cmd = usb.read();
 
     if(cmd == 'Z') {
       // "Identify" command; return Sucessful
-      Serial.println("TEST SUCESSFUL");
+      usb.println("TEST SUCESSFUL");
     }//if
     if(cmd == 'T'){
-      Serial.println(readThermistorTemperature());
+      usb.println(readThermistorTemperature());
     }
     if (cmd == 'I') {
       // "Identify" command; return board name
-      Serial.println(F("[MDE] CAMERA"));
+      usb.println(F("[MDE] CAMERA"));
     }
   
   }//while
@@ -201,7 +203,7 @@ void debugMode() {
 
 
 void loop(){
-  Serial.println(F("LOOP"));
+  usb.println(F("LOOP"));
   // setPowerLevel(0);
   delay(3000);
 }
@@ -317,7 +319,7 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
 
 //   // // Start USB debugging
 //   // // Configure I2C bus
-//   // Serial.begin(115200);
+//   // usb.begin(115200);
 
 //   // // Configure SPI
 //   // SPI.setSCLK(FLASH_SCK_PIN);
@@ -340,19 +342,19 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
 //   tone(BUZZER_PIN_A, BUZZER_TONE);
 //   delay(BEEP_LENGTH);
 //   noTone(BUZZER_PIN_A);
-//   Serial.println("STARTED");
+//   usb.println("STARTED");
 
-  // Serial.println("[MDE] ENTER D FOR DEBUG");
+  // usb.println("[MDE] ENTER D FOR DEBUG");
   // digitalWrite(STATUS_LED_PIN,HIGH);
 
   // uint32_t startTime = millis();
-  // while (!Serial.available() and millis()-startTime < 5000) {}
+  // while (!usb.available() and millis()-startTime < 5000) {}
 
   // // Prompt for entering debug mode
-  // if (Serial.available()) {
-  //   byte d = Serial.read();
+  // if (usb.available()) {
+  //   byte d = usb.read();
   //   emptySerialBuffer();
-  //   Serial.println("[MDE] Entered Debug Mode");
+  //   usb.println("[MDE] Entered Debug Mode");
   //   debugMode();
   //   while (true) {}
   // }//if
@@ -365,7 +367,7 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
   // canb.setBaudRate(500000); //500kbps
 
   //VTX Startup (Set Frequency and Power)
-  // trampSerial.begin(9600);
+  // trampSerial.begin(LIVE_CAM_BAUD_RATE);
   // delay(1000); // Wait for VTX to power up
   // sendTrampSetCommand(BAND, CHANNEL, 2); //Power Level = 2 (200mW)
 
@@ -383,7 +385,7 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
 // Empties all bytes from incoming serial buffer.
 // Used by Debug mode
 // void emptySerialBuffer() {
-//   while (Serial.available()) {Serial.read();}
+//   while (usb.available()) {usb.read();}
 // }//emptySerialBuffer()
 
 // // Called when Debug mode is activated;
@@ -398,19 +400,19 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
 //   while (true) {
 //     emptySerialBuffer();
 
-//     while (!Serial.available()) {}
-//     uint8_t cmd = Serial.read();
+//     while (!usb.available()) {}
+//     uint8_t cmd = usb.read();
 
 //     if(cmd == 'Z') {
 //       // "Identify" command; return Sucessful
-//       Serial.println("TEST SUCESSFUL");
+//       usb.println("TEST SUCESSFUL");
 //     }//if
 //     if(cmd == 'T'){
-//       Serial.println(readThermistorTemperature());
+//       usb.println(readThermistorTemperature());
 //     }
 //     if (cmd == 'I') {
 //       // "Identify" command; return board name
-//       Serial.println(F("[MDE] CAMERA"));
+//       usb.println(F("[MDE] CAMERA"));
 //     }
   
 //   }//while
@@ -493,4 +495,3 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
 
 //     canb.write(CAN_TX_msg); //send
 // } //sendCANStatus()
-

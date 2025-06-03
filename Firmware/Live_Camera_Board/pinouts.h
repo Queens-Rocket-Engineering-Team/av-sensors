@@ -22,7 +22,3 @@
 #define CAM_RX_PIN PA10
 #define FLASH_RESET_PIN PA13
 #define STATUS_LED_PIN PA15
-
-
-#define MAGN_ADDR 0x0E 
-#define BME680_ADDR 0x77
