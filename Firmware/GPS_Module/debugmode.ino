@@ -1,7 +1,7 @@
 // Empties all bytes from incoming serial buffer.
 // Used by Debug mode
 void emptySerialBuffer() {
-  while (softSerial.available()) {softSerial.read();}
+  while (usb.available()) {usb.read();}
 }//emptySerialBuffer()
 
 
@@ -18,35 +18,35 @@ void debugMode() {
     emptySerialBuffer();
 
     // Wait for command
-    while (!softSerial.available()) {}
-    uint8_t cmd = softSerial.read();
+    while (!usb.available()) {}
+    uint8_t cmd = usb.read();
 
     if (cmd == 'I') {
       // "Identify" command; return board name
-      softSerial.println(F("[MDE] CHEDDAR GPS"));
+      usb.println(F("[MDE] NASONOV GPS"));
     }//if
     if (cmd == 'F') {
       // "FlashInfo" command; return flash usage stats
-      softSerial.print("[MDE] ");
-      softSerial.print(table.getMaxSize());
-      softSerial.print(F(","));
-      softSerial.println(table.getCurSize());   
+      usb.print("[MDE] ");
+      usb.print(table.getMaxSize());
+      usb.print(F(","));
+      usb.println(table.getCurSize());   
     }//if
     if (cmd == 'D') {
       // "DumpFlash" command; dump all flash contents via serial
-      table.beginDataDump(&softSerial); //func overload; dump everything
+      table.beginDataDump(&usb); //func overload; dump everything
     }//if
     if (cmd == 'E') {
       // "EraseFlash" command; completely erase contents of flash.
       // Should be restarted afterwards
-      softSerial.println(F("[MDE] Erasing Flash"));
+      usb.println(F("[MDE] Erasing Flash"));
       SerialFlash.eraseAll();
       while (SerialFlash.ready() == false) {}
-      softSerial.println(F("[MDE] Complete"));
+      usb.println(F("[MDE] Complete"));
     }//if
     if (cmd == 'Q') {
       // QUERY SENSORS
-      softSerial.print(F("[MDE] Null"));
+      usb.print(F("[MDE] Null"));
     }//if
 
   }//while

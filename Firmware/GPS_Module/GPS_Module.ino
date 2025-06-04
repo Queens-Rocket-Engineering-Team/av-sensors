@@ -1,23 +1,30 @@
 /*
- * Quick SPAC SRAD firmare for GPS module
  * Authors: Kennan Bays, Raquel Donovan
- * Aug.18.2024
+ * Created: ~Aug.18.2024
+ * Updated: Jun.4.2025
+ * Hardware: QRET SRAD GPS Module Rev2.0 (NASONOV)
+ * Environment: STM32duino ~2.7
+ * Purpose: Firmware for GPS module.
+ * 
+ * Upload Settings:
+ * - MCU is STM32F103CBTx
+ * - USB Support: None
  */
 
-#include "CANPackets.h"
+#include "CANPackets.h" //TODO: Update CanPackets to be the same across ALL MODULE FIRMWARE. Notable additions are the camera module ID
 #include "pinouts.h"
 #include "STM32_CAN.h" //https://github.com/pazi88/STM32_CAN
 #include <Wire.h>
 #include <TinyGPSPlus.h>
-#include <SoftwareSerial.h>
 #include <SerialFlash.h>
 #include <SPI.h>
 #include "flashTable.h"
+#include <HardwareSerial.h>
 
 
 //TODO: UPDATE defines
-#define SERIAL_ENABLE true
-#define SERIAL_BAUD 38400
+#define USB_ENABLE true
+#define USB_BAUD 115200
 #define CANBUS_BAUD 500000 //500kbps
 
 //Buzzer Settings
@@ -29,8 +36,8 @@ const uint32_t BEEP_FREQ = 1000;
 // The TinyGPSPlus object
 TinyGPSPlus gps;
 
-// Software softSerial object
-SoftwareSerial softSerial(USB_DM_PIN, USB_DP_PIN); // RX, TX
+// USB interface
+HardwareSerial usb(USB_RX_PIN, USB_TX_PIN);
 
 // CANBus objects
 STM32_CAN can( CAN1, ALT ); //CAN1 ALT is PB8+PB9
@@ -59,13 +66,13 @@ void checkGPS() {
   int32_t latInt = gps.location.lat()*1000000;
   int32_t lngInt = gps.location.lng()*1000000;
 
-  softSerial.print(F("NumSat="));
-  softSerial.println(numSat);
+  usb.print(F("NumSat="));
+  usb.println(numSat);
   
-  softSerial.print(F("Lat="));
-  softSerial.print(latInt);
-  softSerial.print(F(" Long="));
-  softSerial.println(lngInt);
+  usb.print(F("Lat="));
+  usb.print(latInt);
+  usb.print(F(" Long="));
+  usb.println(lngInt);
 
   CAN_TX_msg.id = GPS_MOD_CANID+GPS_LAT_CANID;
   CAN_TX_msg.len = 4;
@@ -113,14 +120,16 @@ void handleGPS() {
 }//handleGPS()
 
 void setup() {
-  #if defined(SERIAL_ENABLE)
-  softSerial.begin(SERIAL_BAUD);
+  #if defined(USB_ENABLE)
+  usb.begin(USB_BAUD);
   #endif
   
   // Set pinmodes
   pinMode(STATUS_LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUZZER_A_PIN, OUTPUT);
+  pinMode(BUZZER_B_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
+  digitalWrite(BUZZER_B_PIN, LOW); //TODO: Properly implement dual-drive buzzer code
   
   // Set up I2C
   Wire.setSCL(GPS_SCL_PIN);
@@ -138,7 +147,7 @@ void setup() {
 
   // Initialize Flash Chip
   while (!SerialFlash.begin(FLASH_CS_PIN)) {
-    softSerial.println(F("Connecting to SPI Flash chip..."));
+    usb.println(F("Connecting to SPI Flash chip..."));
     delay(250);
     //toggleStatusLED();
   }//while
@@ -153,23 +162,23 @@ void setup() {
 
   // STARTUP BEEP
   delay(BEEP_DELAY);
-  tone(BUZZER_PIN, BEEP_FREQ);
+  tone(BUZZER_A_PIN, BEEP_FREQ);
   delay(1000);
-  tone(BUZZER_PIN, 0);
+  tone(BUZZER_A_PIN, 0);
 
   // Startup delay - Check to enter debug mode
-  softSerial.println("[MDE] Send serial to enter debug");
+  usb.println("[MDE] Send serial to enter debug");
   uint32_t startTime = millis();
-  while (!softSerial.available() and millis()-startTime < 5000) {}
+  while (!usb.available() and millis()-startTime < 5000) {}
 
-  if (softSerial.available()) {
-    byte d = softSerial.read();
+  if (usb.available()) {
+    byte d = usb.read();
     emptySerialBuffer();
-    softSerial.println(F("[MDE] Entered Debug Mode"));
+    usb.println(F("[MDE] Entered Debug Mode"));
     debugMode();
     while (true) {}
   }//if
-  softSerial.println(F("Running Normally"));
+  usb.println(F("Running Normally"));
   
 }//setup()
 
