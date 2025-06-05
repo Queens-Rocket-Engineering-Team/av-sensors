@@ -4,7 +4,9 @@
  * Env: Arduino 1.8.10, STM32duino 2.7.1
  * Created: ~Jun.16.2024
  * Updated: May.26.2025
- * Purpose: SRAD firmware for communications module.
+ * Purpose: SRAD firmware for communications module Rev2 (WAGGLE).
+ * 
+ * IMPORTANT: ADD YOUR CALLSIGN IN HERE
  */
 
 #include "CANPackets.h"
@@ -16,6 +18,7 @@
 #include <SerialFlash.h>
 #include <SPI.h>
 //#include "flashTable.h"
+
 
 
 // TODO: Implement proper dual-wave driving of the buzzer
@@ -32,8 +35,11 @@ const uint32_t BEEP_DELAY = 6000;
 const uint32_t BEEP_LENGTH = 1000;
 const uint32_t BEEP_FREQ = 1000;
 
+// LoRa Radio Settings
+const uint8_t CALLSIGN[6] = {'V','A','3','K','H','B'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
+const uint8_t RADIO_TX_POWER = 12; //dBm
 const double FREQUENCY = 905.4;
-const double BANDWIDTH = 31.25;
+const double BANDWIDTH = 62.5;
 const int32_t SPREADING_RATE = 10;
 const uint8_t CODING_RATE = 6;
 
@@ -48,6 +54,18 @@ uint32_t powerDownInitTime = 0; //10min
 bool inPowerDown = false;
 
 
+// RADIO TX PACKET VALUES
+uint32_t recvGPSLat = 0;
+uint32_t recvGPSLon = 0;
+uint8_t recvGPSSats = 0;
+uint32_t recvAltitude = 0;
+bool seenAltimeter = false;
+bool seenSensors = false;
+bool seenGPS = false;
+const uint8_t PACKET_SIZE = 14+6;
+uint8_t packet[PACKET_SIZE] = {};
+
+
 // Hardware serial object for USB comms
 // NOTE: This had to be changed to software serial as the TX/RX pins are flipped on hardware.
 SoftwareSerial usb(USB_RX_PIN, USB_TX_PIN);
@@ -60,7 +78,7 @@ static CAN_message_t CAN_TX_msg;
 // Create FlashTable object
 const uint8_t TABLE_NAME = 0;
 const uint8_t TABLE_COLS = 3;
-const uint32_t TABLE_SIZE = 204800; //4096000
+const uint32_t TABLE_SIZE = 204800; //4096000 [NOTE: DONT MAKE IT THE FULL SIZE OF FLASH]
 //FlashTable table = FlashTable(TABLE_COLS, 16384, TABLE_SIZE, TABLE_NAME, 256);
 
 
@@ -128,7 +146,7 @@ void radioInit() {
 
   // set output power to 12 dBm (SX1262 max is +22, LoRa1262F30 has amp for up to +30)
   // TODO: Change this to a higher power. Check how the LoRa1262F30 is designed; does it use an external PA? Do we have to enable that?
-  if (radio->setOutputPower(12) == RADIOLIB_ERR_INVALID_OUTPUT_POWER) {
+  if (radio->setOutputPower(RADIO_TX_POWER) == RADIOLIB_ERR_INVALID_OUTPUT_POWER) {
     usb.println(F("Selected output power is invalid for this module!"));
     while (true);
   }
@@ -217,21 +235,19 @@ void setup() {
   
 }//setup()
 
-uint32_t recvGPSLat = 0;
-uint32_t recvGPSLon = 0;
-uint8_t recvGPSSats = 0;
-uint32_t recvAltitude = 0;
 
-bool seenAltimeter = false;
-bool seenSensors = false;
-bool seenGPS = false;
-
-#define PACKET_SIZE 14
-uint8_t packet[PACKET_SIZE] = {};
 
 void loop() {
   // put your main code here, to run repeatedly:
 
+  // TODO: MOVE THIS INTO SETUP; INEFFICENT HERE
+  packet[0] = CALLSIGN[0];
+  packet[1] = CALLSIGN[1];
+  packet[2] = CALLSIGN[2];
+  packet[3] = CALLSIGN[3];
+  packet[4] = CALLSIGN[4];
+  packet[5] = CALLSIGN[5];
+  
 //  if (!inPowerDown && pendingPowerDown && millis()-powerDownInitTime > POWER_DOWN_DELAY) {
 //    inPowerDown = true
 //    powerDown();
@@ -253,31 +269,31 @@ void loop() {
     usb.println(CAN_RX_msg.id, BIN);
     if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_LAT_CANID) {
       //CAN_RX_msg.buf[i]
-      packet[0] = CAN_RX_msg.buf[0];
-      packet[1] = CAN_RX_msg.buf[1];
-      packet[2] = CAN_RX_msg.buf[2];
-      packet[3] = CAN_RX_msg.buf[3];
+      packet[6] = CAN_RX_msg.buf[0];
+      packet[7] = CAN_RX_msg.buf[1];
+      packet[8] = CAN_RX_msg.buf[2];
+      packet[9] = CAN_RX_msg.buf[3];
       seenGPS = true;
       usb.println(F("Recv LAT"));
     } else if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_LON_CANID) {
       //CAN_RX_msg.buf[i]
-      packet[4] = CAN_RX_msg.buf[0];
-      packet[5] = CAN_RX_msg.buf[1];
-      packet[6] = CAN_RX_msg.buf[2];
-      packet[7] = CAN_RX_msg.buf[3];
+      packet[10] = CAN_RX_msg.buf[0];
+      packet[11] = CAN_RX_msg.buf[1];
+      packet[12] = CAN_RX_msg.buf[2];
+      packet[13] = CAN_RX_msg.buf[3];
       seenGPS = true;
       usb.println(F("Recv LON"));
     } else if (CAN_RX_msg.id == GPS_MOD_CANID+GPS_NUMSAT_CANID) {
       //CAN_RX_msg.buf[i]
-      packet[8] = CAN_RX_msg.buf[0];
+      packet[14] = CAN_RX_msg.buf[0];
       usb.println(F("Recv NUM SAT"));
       seenGPS = true;
     } else if (CAN_RX_msg.id == ALTIMETER_MOD_CANID+ALTITUDE_CANID) {
       //CAN_RX_msg.buf[i]
-      packet[9] = CAN_RX_msg.buf[0];
-      packet[10] = CAN_RX_msg.buf[1];
-      packet[11] = CAN_RX_msg.buf[2];
-      packet[12] = CAN_RX_msg.buf[3];
+      packet[15] = CAN_RX_msg.buf[0];
+      packet[16] = CAN_RX_msg.buf[1];
+      packet[17] = CAN_RX_msg.buf[2];
+      packet[18] = CAN_RX_msg.buf[3];
       usb.println(F("Recv ALTITUDE"));
     } else if (CAN_RX_msg.id == ALTIMETER_MOD_CANID+FLIGHT_STAGE_CANID) {
       //check if landed
@@ -293,7 +309,7 @@ void loop() {
       seenSensors = true;
     }
 
-    packet[13] = seenGPS*1 + seenAltimeter*2 + seenSensors*4;
+    packet[19] = seenGPS*1 + seenAltimeter*2 + seenSensors*4;
 
   }//while
 
