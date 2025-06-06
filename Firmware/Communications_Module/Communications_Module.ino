@@ -37,11 +37,17 @@ const uint32_t BEEP_FREQ = 1000;
 
 // LoRa Radio Settings
 const uint8_t CALLSIGN[6] = {'V','A','3','K','H','B'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
-const uint8_t RADIO_TX_POWER = 12; //dBm
-const double FREQUENCY = 905.4;
-const double BANDWIDTH = 62.5;
-const int32_t SPREADING_RATE = 10;
-const uint8_t CODING_RATE = 6;
+uint8_t RADIO_TX_POWER = 12; //dBm
+double FREQUENCY = 905.4;
+double BANDWIDTH = 62.5;
+int32_t SPREADING_RATE = 10;
+uint8_t CODING_RATE = 6;
+
+uint8_t powerOpts[] = {4, 7, 10, 13, 16, 19, 22};
+double bandwidthOpts[] = {7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500};
+int32_t spreadOpts[] = {7, 8, 9, 10, 11, 12};
+int32_t codingOpts[] = {5, 6, 7, 8};
+
 
 #define NORMAL_TRANSMIT_GAP 100
 #define BEACON_TRANSMIT_GAP 100 //15000 //15sec
@@ -247,6 +253,50 @@ void loop() {
   packet[3] = CALLSIGN[3];
   packet[4] = CALLSIGN[4];
   packet[5] = CALLSIGN[5];
+
+  if (usb.available()) {
+    uint8_t cmd = usb.read();
+    uint8_t ind = usb.read() - '0';
+
+    if (cmd=='P') {
+      // {  4,    7,     10,       13,      16,    19,     22}; "dbm", 22=absolute max
+      //  3mw   5mw     10mw      20mw     40mw    80mw    160mw
+      //  ~19mw  ~39mw   ~78mw    ~156mw   ~312mw  ~625mw  ~1250mw
+      //    P0    P1     P2        P3       P4     P5      P6
+      RADIO_TX_POWER = powerOpts[ind];
+      usb.print("RADIO_TX_POWER: ");
+      usb.println(RADIO_TX_POWER);
+      radioInit();
+      usb.println("READY!");
+    }
+    if (cmd=='B') {
+      // {7.8,  10.4,  15.6,  20.8,  31.25,  41.7,  62.5,  125,  250,  500};
+      //  B0    B1     B2     B3     B4      B5     B6     B7    B8    B9
+      BANDWIDTH = bandwidthOpts[ind];
+      usb.print("BANDWIDTH: ");
+      usb.println(BANDWIDTH);
+      radioInit();
+      usb.println("READY!");
+    }
+    if (cmd=='S') {
+      // {7,  8,  9,  10, 11, 12};
+      //  S0  S1  S2  S3  S4  S5
+      SPREADING_RATE = spreadOpts[ind];
+      usb.print("SPREADING_RATE: ");
+      usb.println(SPREADING_RATE);
+      radioInit();
+      usb.println("READY!");
+    }
+    if (cmd=='C') {
+      // {5,  6,  7,  8};
+      //  C0  C1  C2  C3
+      CODING_RATE = codingOpts[ind];
+      usb.print("CODING_RATE: ");
+      usb.println(CODING_RATE);
+      radioInit();
+      usb.println("READY!");
+    }
+  }//if (usb avail)
   
 //  if (!inPowerDown && pendingPowerDown && millis()-powerDownInitTime > POWER_DOWN_DELAY) {
 //    inPowerDown = true
