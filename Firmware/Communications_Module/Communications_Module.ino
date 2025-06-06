@@ -37,7 +37,7 @@ const uint32_t BEEP_FREQ = 1000;
 
 // LoRa Radio Settings
 const uint8_t CALLSIGN[6] = {'V','A','3','K','H','B'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
-uint8_t RADIO_TX_POWER = 12; //dBm
+uint8_t RADIO_TX_POWER = 20; //dBm
 double FREQUENCY = 905.4;
 double BANDWIDTH = 62.5;
 int32_t SPREADING_RATE = 10;
