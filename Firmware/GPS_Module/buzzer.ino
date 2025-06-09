@@ -35,11 +35,13 @@ void initBuzzer() {
 void stopBuzzer() {
   // Disables buzzer PWM
   LL_TIM_CC_DisableChannel(buzzerTimer->getHandle()->Instance, LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH1N);
+  //LL_TIM_CC_DisableChannel(buzzerTimer->getHandle()->Instance, LL_TIM_CHANNEL_CH3 | LL_TIM_CHANNEL_CH3N);
 }//stopBuzzer()
 
 void startBuzzer() {
   // Enables buzzer PWM
   LL_TIM_CC_EnableChannel(buzzerTimer->getHandle()->Instance, LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH1N);
+  //LL_TIM_CC_EnableChannel(buzzerTimer->getHandle()->Instance, LL_TIM_CHANNEL_CH3 | LL_TIM_CHANNEL_CH3N);
   buzzerTimer->resume();
 }//startBuzzer()
 
