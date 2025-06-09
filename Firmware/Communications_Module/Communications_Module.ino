@@ -36,7 +36,7 @@ const uint32_t BEEP_LENGTH = 1000;
 const uint32_t BEEP_FREQ = 1000;
 
 // LoRa Radio Settings
-const uint8_t CALLSIGN[6] = {'V','A','3','K','H','B'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
+const uint8_t CALLSIGN[6] = {'V','E','3','D','V','V'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
 uint8_t RADIO_TX_POWER = 20; //dBm
 double FREQUENCY = 905.4;
 double BANDWIDTH = 62.5;
@@ -238,21 +238,19 @@ void setup() {
     }//if
   }//if
   usb.println(F("Running Normally"));
-  
-}//setup()
 
-
-
-void loop() {
-  // put your main code here, to run repeatedly:
-
-  // TODO: MOVE THIS INTO SETUP; INEFFICENT HERE
   packet[0] = CALLSIGN[0];
   packet[1] = CALLSIGN[1];
   packet[2] = CALLSIGN[2];
   packet[3] = CALLSIGN[3];
   packet[4] = CALLSIGN[4];
   packet[5] = CALLSIGN[5];
+}//setup()
+
+
+
+void loop() {
+  // put your main code here, to run repeatedly:
 
   if (usb.available()) {
     uint8_t cmd = usb.read();
@@ -357,9 +355,11 @@ void loop() {
 //      }//if(landed)
     } else if (CAN_RX_msg.id == SENSOR_MOD_CANID+STATUS_CANID) {
       seenSensors = true;
+    } else if (CAN_RX_msg.id == CAMERA_MOD_CANID+STATUS_CANID) {
+      seenCamera = true;
     }
 
-    packet[19] = seenGPS*1 + seenAltimeter*2 + seenSensors*4;
+    packet[19] = seenGPS*1 + seenAltimeter*2 + seenSensors*4 + seenCamera*8;
 
   }//while
 
