@@ -1,10 +1,10 @@
 /*
  * Authors: Kennan Bays, Raquel Donovan
  * Created: ~Aug.18.2024
- * Updated: Jun.4.2025
+ * Updated: Jun.9.2025
  * Hardware: QRET SRAD GPS Module Rev2.0 (NASONOV)
- * Environment: STM32duino ~2.7
- * Purpose: Firmware for GPS module.
+ * Environment: STM32duino 2.7.1
+ * Purpose: Firmware for QRET SRAD GPS module.
  * 
  * Upload Settings:
  * - MCU is STM32F103CBTx
@@ -129,7 +129,10 @@ void setup() {
   pinMode(BUZZER_A_PIN, OUTPUT);
   pinMode(BUZZER_B_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
-  digitalWrite(BUZZER_B_PIN, LOW); //TODO: Properly implement dual-drive buzzer code
+
+  // Init buzzer
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
   
   // Set up I2C
   Wire.setSCL(GPS_SCL_PIN);
@@ -162,9 +165,9 @@ void setup() {
 
   // STARTUP BEEP
   delay(BEEP_DELAY);
-  tone(BUZZER_A_PIN, BEEP_FREQ);
+  startBuzzer();
   delay(1000);
-  tone(BUZZER_A_PIN, 0);
+  stopBuzzer();
 
   // Startup delay - Check to enter debug mode
   usb.println("[MDE] Send serial to enter debug");
