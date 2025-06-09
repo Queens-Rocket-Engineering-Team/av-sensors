@@ -67,6 +67,7 @@ uint8_t recvGPSSats = 0;
 uint32_t recvAltitude = 0;
 bool seenAltimeter = false;
 bool seenSensors = false;
+bool seenCamera = false;
 bool seenGPS = false;
 const uint8_t PACKET_SIZE = 14+6;
 uint8_t packet[PACKET_SIZE] = {};
