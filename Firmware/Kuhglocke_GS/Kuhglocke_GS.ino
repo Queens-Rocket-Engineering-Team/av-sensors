@@ -61,7 +61,7 @@
 
 #define EARTH_RADIUS_FEET 20925524.9
 
-const String FIRMWARE_VERSION = "Jun.04.2025, V1.1.0A";
+const String FIRMWARE_VERSION = "Jun.04.2025, V1.1.0B";
 
 // ================================================================================================
 // ================================= \/ GLOBAL CONSTANTS \/ =======================================
@@ -132,7 +132,7 @@ volatile int32_t rocketGPSLon = 0;
 volatile uint8_t rocketGPSSats = 0;
 volatile int32_t rocketAltitude = 0;
 volatile uint8_t rocketStatus = 0;
-volatile int32_t rocketVelocity = 0;
+volatile double rocketVelocity = 0;
 volatile char rocketCallsign[7] = {'-','-','-','-','-','-','\0'};
 
 uint32_t lastLocalGPSLog = 0; //When we last logged local GPS to SD
@@ -1003,6 +1003,8 @@ void calculateRocketVelocity() {
         
         if (lastTime > 0 && previousAltitude > 0) {
             // Calculate velocity (ft/s)
+			// TODO: ENSURE BOTH ALTIMETER MODULE & KUHGLOCKE ARE CONSISTENTLY USING ALL METERS OR ALL FEET.
+			// NOTE: Using meters in code & then adding a quick frontend calculation to change it to feet would be the best setup.
             float timeDiff = (currentTime - lastTime) / 1000.0; // Convert to seconds
             float altDiff = currentAltitude - previousAltitude;
             rocketVelocity = altDiff / timeDiff;
