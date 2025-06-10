@@ -147,11 +147,12 @@
 			rocketLongitude = (Number(chunks[35])).toFixed(6);
 			rocketAltitude = ((Number(chunks[36]))*3.281).toFixed(2);
 			rocketStatus = chunks[37];
+			rocketCallsign = chunks[38];
 			
-			curFreqOffset = chunks[38];
+			curFreqOffset = chunks[39];
 			
-			core0FreeStack = ((Number(chunks[39]))/1024).toFixed(2);
-			core0LoopTime = Number(chunks[40]);
+			core0FreeStack = ((Number(chunks[40]))/1024).toFixed(2);
+			core0LoopTime = Number(chunks[41]);
 			
 
 			//Display

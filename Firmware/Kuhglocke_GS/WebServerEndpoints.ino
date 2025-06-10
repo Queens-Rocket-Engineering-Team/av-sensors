@@ -57,7 +57,7 @@ void configWebServer() {
     request->send(SPIFFS, "/debug.html", String(), false, processorDebug);
   });
 
-  // Route for debug web page
+  // Route for dashboard web page
   webServer.on("/dashboard", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/dashboard.html", String(), false, processorDebug);
   });
@@ -125,12 +125,13 @@ void configWebServer() {
     resp += "," + ((rfmLastPacketValid) ? String("Yes") : String("NO"));
     resp += "," + ((false) ? String("Yes") : String("NO"));
 
-    // RcktSats,RcktLat,RcktLon,RcktAltm,RcktStatus (5)
+    // RcktSats,RcktLat,RcktLon,RcktAltm,RcktStatus,RcktCallsign (6)
     resp += "," + String(rocketGPSSats);
     resp += "," + String(rocketGPSLat/1000000.0, 6);
     resp += "," + String(rocketGPSLon/1000000.0, 6);
     resp += "," + String(rocketAltitude);
     resp += "," + String(rocketStatus, BIN);
+    resp += "," + String((const char*)rocketCallsign);
 
     resp += "," + String(curFreqOffset);
 
@@ -206,6 +207,25 @@ void configWebServer() {
 
     }//if
     request->send(404, "text/plain", "No id paramter given.");
+  });
+
+  // Route for changing radio settings
+  webServer.on("/RadioConfig", HTTP_GET, [](AsyncWebServerRequest *request){
+    // Ensure valid request
+    AsyncWebParameter* p = request->getParam(0);
+
+    if (p->name() == "bandwidth") {
+      uint16_t bwInd = p->value().toInt();
+      bandwidthSelected = bwInd;
+    } else if (p->name() == "spreadingfactor") {
+      uint16_t sfInd = p->value().toInt();
+      spreadSelected = sfInd;
+    } else if (p->name() == "codingrate") {
+      uint16_t crInd = p->value().toInt();
+      codingSelected = crInd;
+    }//if
+
+    request->send(200, "text/plain", "OK");
   });
   
 }//configWebServer
