@@ -131,16 +131,13 @@ volatile int32_t rocketGPSLon = 0;
 volatile uint8_t rocketGPSSats = 0;
 volatile int32_t rocketAltitude = 0;
 volatile uint8_t rocketStatus = 0;
-
+volatile int32_t rocketVelocity = 0;
 
 uint32_t lastLocalGPSLog = 0; //When we last logged local GPS to SD
 
 int32_t curFreqOffset = 0;
 
-
 uint32_t lastEPDUpdate = millis(); // How long its been since a partial EPD update was done
-
-
 
 // (anything used set by Core0 must be volatile)
 // (assignment is mostly atomic operation, so no mutex for simple stuff)
@@ -541,8 +538,6 @@ void initNAU7802() {
   //TODO: Flush out readings (10x for loop that reads?)
 
 }//initNAU7802()
-
-
 
 
 
@@ -996,6 +991,25 @@ int32_t getDistanceToRocket() {
   
 }//getDistanceToRocket()
 
+void calculateRocketVelocity() {
+    static int32_t previousAltitude = 0;
+    static uint32_t lastTime = 0;
+    
+    if (rfmLastPacketValid && millis() - rfmLastRFReceived < RFM_CONNECTED_TIMEOUT) {
+        uint32_t currentTime = millis();
+        int32_t currentAltitude = rocketAltitude;
+        
+        if (lastTime > 0 && previousAltitude > 0) {
+            // Calculate velocity (ft/s)
+            float timeDiff = (currentTime - lastTime) / 1000.0; // Convert to seconds
+            float altDiff = currentAltitude - previousAltitude;
+            rocketVelocity = altDiff / timeDiff;
+        }
+        
+        previousAltitude = currentAltitude;
+        lastTime = currentTime;
+    }
+}
 
 /*
  * Handles reading various power sensors,
@@ -1104,6 +1118,10 @@ void updateEPD() {
     display.print("AGE:");
     display.print((millis()-rfmLastRFReceived)/1000.0, 1);
     display.println("s");
+
+    display.print("VEL:");
+    display.print(rocketVelocity, 1);
+    display.print("ft/s");
 
     display.setCursor(x+160, y + 16*3);
     //display.print("D=");
@@ -1228,6 +1246,8 @@ void onRFMReceive() {
   rfmLastSNR = radio.getSNR();
   rfmLastFreqErr = radio.getFrequencyError();
 
+  calculateRocketVelocity();
+
   // Log to SD card
   String resp = String("RocketPacket: ");
   resp += String(millis()-rfmLastRFReceived);
@@ -1243,7 +1263,9 @@ void onRFMReceive() {
   resp2 += "," + String(rocketGPSLat/1000000.0, 6);
   resp2 += "," + String(rocketGPSLon/1000000.0, 6);
   resp2 += "," + String(rocketAltitude);
+  resp2 += "," + String(rocketVelocity);
   resp2 += "," + String(rocketStatus, BIN);
+  
   writeToSDLog(resp2);
  
 }//onRFMReceive()
