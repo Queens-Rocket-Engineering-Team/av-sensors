@@ -37,9 +37,7 @@ Flash capability proveded by:
 // TODO: RE-WORK BUZZER FOR ALL MODULES
 #define BUZZER_TONE 1000
 #define BUZZER_TONE_Q 500
-
-
-
+const uint32_t BEEP_FREQ = 1000;
 
 #define SERIAL_BAUD_RATE 38400
 //#define SERIAL_BAUD_RATE 9600
@@ -158,6 +156,7 @@ void setup(){
   pinMode(STATUS_LED_PIN, OUTPUT);
   pinMode(FIRE_MAIN_PIN,OUTPUT);
   pinMode(FIRE_DROGUE_PIN,OUTPUT);
+  
 
   // Configure SPI
   SPI.setSCLK(PB13);
@@ -175,6 +174,17 @@ void setup(){
 
   //Start Serial
   usb.begin(SERIAL_BAUD_RATE);
+  delay(1000);
+
+  usb.print("BUZZER REACHED");      
+
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
+
+  // // STARTUP BEEP
+  startBuzzer();
+  delay(1000);
+  stopBuzzer();
     
   digitalWrite(STATUS_LED_PIN,LOW);
 
@@ -200,7 +210,7 @@ void setup(){
       while (SerialFlash.ready() == false) {}  
   // Initialize FlashTable object
   for (int i=0; i<3; i++) {
-  tone(BUZZER_A_PIN, BUZZER_TONE_Q);
+  // tone(BUZZER_A_PIN, BUZZER_TONE_Q);
   delay(100);
   noTone(BUZZER_A_PIN);
   delay(100);
@@ -252,11 +262,6 @@ void setup(){
   kxAccel.softwareReset();
   kxAccel.setRange(SFE_KX134_RANGE32G);
   //kxAccel.setOffset(qmaOffsetX,qmaOffsetY,qmaOffsetZ);
-
-  // STARTUP BEEP
-  tone(BUZZER_A_PIN, BUZZER_TONE);
-  delay(1000);
-  noTone(BUZZER_A_PIN);
 
   // Get base measurements
   usb.println("Aquiring base Pressure...");
