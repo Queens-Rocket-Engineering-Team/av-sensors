@@ -41,10 +41,9 @@ bool pitMode = false;
 
 //VARIABLES
 //buzzer
-const uint32_t BEEP_DELAY = 6000;
+const uint32_t BEEP_DELAY = 8000;
 const uint32_t BEEP_LENGTH = 1000;
-const uint32_t BUZZER_TONE = 1000;
-const uint32_t BUZZER_TONE_Q = 500;
+const uint32_t BEEP_FREQ = 1000;
 
 // //canbus
 const uint32_t STATUS_REPORT_DELAY = 1000; //How frequently the status report should be sent
@@ -87,6 +86,7 @@ static CAN_message_t CAN_RX_msg;
 void setup(){
   // Setup pinmodes
   pinMode(BUZZER_PIN_A, OUTPUT);
+  pinMode(BUZZER_PIN_B, OUTPUT);
   pinMode(STATUS_LED_PIN, OUTPUT);
   pinMode(CAMERA_POWER_PIN, OUTPUT);
   pinMode(VTX_PWR_PIN, OUTPUT);
@@ -96,13 +96,14 @@ void setup(){
   // Start USB debugging  
   usb.begin(USB_BAUD_RATE);
 
+  // Init buzzer
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
+
   // Configure SPI
   SPI.setSCLK(FLASH_SCK_PIN);
   SPI.setMISO(FLASH_MISO_PIN);
   SPI.setMOSI(FLASH_MOSI_PIN);
-
-  //Configure Buzzer
-  digitalWrite(BUZZER_PIN_B, LOW);
 
   //LED FLASHES TO ALLOW FOR SERIAL OPEN
   for (int i=0 ; i <5 ; i++){
@@ -114,10 +115,9 @@ void setup(){
 
   // STARTUP BEEP
   delay(BEEP_DELAY);
-  tone(BUZZER_PIN_A, BUZZER_TONE);
-  delay(BEEP_LENGTH);
-  noTone(BUZZER_PIN_A);
-  usb.println("STARTED");
+  startBuzzer();
+  delay(1000);
+  stopBuzzer();
 
   analogReadResolution(12);
 
