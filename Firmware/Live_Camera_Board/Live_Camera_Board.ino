@@ -73,6 +73,7 @@ const float BETA = 3435.0;         // B value for NRNE104F3435B2F
 const float T0 = 298.15;           // Reference temp (25°C in Kelvin)
 const float R0 = 10000.0;          // Thermistor resistance at 25°C
 const float calibrationValue = 2;
+bool powerTurnedOff = false;
 
 // USB interface
 HardwareSerial usb(USB_RX_PIN, USB_TX_PIN);
@@ -142,8 +143,6 @@ void setup(){
   canb.begin(); //automatic retransmission can be done using arg "true"
   canb.setBaudRate(500000); //500kbps
 
-  usb.println("TEST");
-
   // Initialize Tramp protocol serial (8N1, 9600 baud)
   Serial2.setTx(PB10);  // Explicit TX pin
   Serial2.setRx(PB11);  // Optional (not needed for Tramp TX)
@@ -151,12 +150,12 @@ void setup(){
   
   delay(1000);  // Let serial ports stabilize
   
-  // Send PIT mode command with verification
-  if (setPitMode(true)) {
-    usb.println("PIT mode activated (Green LED should be solid)");
-  } else {
-    usb.println("Failed! Check wiring/baud rate");
-  }
+  // // Send PIT mode command with verification
+  // if (setPitMode(true)) {
+  //   usb.println("PIT mode activated (Green LED should be solid)");
+  // } else {
+  //   usb.println("Failed! Check wiring/baud rate");
+  // }
 }
 
 
@@ -196,6 +195,16 @@ void debugMode() {
       // "Identify" command; return board name
       usb.println(F("[MDE] CAMERA"));
     }
+    if (cmd == 'F') {
+      digitalWrite(VTX_PWR_PIN, LOW);
+    }
+    if (cmd == 'O') {
+      digitalWrite(VTX_PWR_PIN, HIGH);
+    }
+    if (cmd == 'A') {
+      usb.println(F(getFlightStatus()));
+    }
+    
   
   }//while
 
@@ -203,9 +212,44 @@ void debugMode() {
 
 
 void loop(){
-  usb.println(F("LOOP"));
-  // setPowerLevel(0);
-  delay(3000);
+
+  //RUNCAM PHYSICAL CODE
+  // Check if camera power should be given
+  // TODO: Make this a bit more efficient? Only trigger at a certain time?
+  if (millis() > CAM_RECORD_DELAY+CAM_POWER_TIME) {
+    //turn off camera
+    digitalWrite(CAMERA_POWER_PIN, LOW);
+    Serial.println("CAM OFF");
+  } else if (millis() > CAM_RECORD_DELAY) {
+    //turn on camera
+    digitalWrite(CAMERA_POWER_PIN, HIGH);
+    Serial.println("CAM ON");
+  }//if
+
+  if(readThermistorTemperature() > 75 && powerTurnedOff == false){
+    digitalWrite(VTX_PWR_PIN, LOW);
+    powerTurnedOff = true;
+  }
+  else if(readThermistorTemperature() < 55 && powerTurnedOff == true){
+    digitalWrite(VTX_PWR_PIN, HIGH);
+    powerTurnedOff = true;
+  }
+
+  flightStage = getFlightStatus();
+
+  //Checking if it is time to report status to CANBUS
+  if(millis() - lastStatusReport > STATUS_REPORT_DELAY){
+    lastStatusReport = millis();
+    sendCANStatus(); //Reporting status
+  }//if
+
+  if(flightStage == 5 || flightStage == NULL){
+    digitalWrite(VTX_PWR_PIN, LOW);
+  }else{
+    digitalWrite(VTX_PWR_PIN, HIGH);
+  }
+
+  prevFlightStage = flightStage;
 }
 
 
@@ -219,6 +263,17 @@ float readThermistorTemperature(){
   float tempC = tempK - 273.15;
   tempC -= 2;
   return tempC;
+}
+
+int getFlightStatus(){
+    while (canb.read(CAN_RX_msg)) {
+    if (CAN_RX_msg.id == ALTIMETER_MOD_CANID+FLIGHT_STAGE_CANID) {
+      //Serial.println(F("Recv FLGHT STAGE"));
+      return CAN_RX_msg.buf[0];
+      return flightStage;
+    } 
+    //if  
+  } //while
 }
 
 bool setPitMode(bool enable) {
@@ -251,8 +306,16 @@ bool verifyPowerLevel(uint8_t expectedLevel) {
   return false;
 }
 
+// ---CANBUS 
+void sendCANStatus(){
+    //Build the CANBUS message
+    CAN_TX_msg.id = (CAMERA_MOD_CANID+STATUS_CANID);
+    CAN_TX_msg.len = 1;
 
+    CAN_TX_msg.buf[0] = 1;
 
+    canb.write(CAN_TX_msg); //send
+} //sendCANStatus()
 
 
 
