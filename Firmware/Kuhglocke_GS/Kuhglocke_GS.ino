@@ -1013,7 +1013,7 @@ void calculateRocketVelocity() {
         previousAltitude = currentAltitude;
         lastTime = currentTime;
     }
-}
+}//calculateRocketVelocity()
 
 /*
  * Handles reading various power sensors,
@@ -1115,7 +1115,7 @@ void updateEPD() {
     //display.setCursor(x, y + 16*2);
     display.print("ALT:");
     //display.print(gps.altitude.feet(), 0);
-    display.print(rocketAltitude, 0);
+    display.print(rocketAltitude * 3.28084f, 0);
     display.println("ft");
 
     //display.setCursor(x, y + 16*3);
@@ -1124,7 +1124,7 @@ void updateEPD() {
     display.println("s");
 
     display.print("VEL:");
-    display.print(rocketVelocity, 1);
+    display.print(rocketVelocity * 3.28084f, 1);
     display.print("ft/s");
 
     display.setCursor(x+160, y + 16*3);
