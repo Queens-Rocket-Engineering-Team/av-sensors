@@ -31,6 +31,9 @@
 		<p class="inlineTitle">SRAD Status:</p>
 		<p class="inlineValue" id="rocketStatus">?</p>
 		<p></p>
+		<p class="inlineTitle">Vertical Velocity:</p>
+		<p class="inlineValue" id="rocketVelocity">?</p>
+		<p></p>
 		<hr>
 		<p class="inlineTitle">Ping Age:</p>
 		<p class="inlineValue" id="lastPingTime">?</p>
@@ -154,6 +157,8 @@
 			core0FreeStack = ((Number(chunks[40]))/1024).toFixed(2);
 			core0LoopTime = Number(chunks[41]);
 			
+			rocketVelocity = Number(chunks[42]).toFixed(2);
+			
 
 			//Display
 			document.getElementById(`battVolt`).innerHTML = `${battSoC}%% (${battVolt}V)`;
@@ -164,7 +169,7 @@
 			document.getElementById(`gpsSatellites`).innerHTML = `${gpsSatellites}`;
 			document.getElementById(`latitude`).innerHTML = `${gpsLat}`;
 			document.getElementById(`longitude`).innerHTML = `${gpsLon}`;
-			document.getElementById(`altitude`).innerHTML = `${gpsAlt}ft`;
+			document.getElementById(`altitude`).innerHTML = `${gpsAlt}m`;
 			
 			document.getElementById(`lastPingTime`).innerHTML = `${lastPingTime}s`;
 			document.getElementById(`lastRSSI`).innerHTML = `${lastRSSI}dBm`;
@@ -174,10 +179,12 @@
 			document.getElementById(`rocketSatellites`).innerHTML = `${rocketSatellites}`;
 			document.getElementById(`rocketLatitude`).innerHTML = `${rocketLatitude}`;
 			document.getElementById(`rocketLongitude`).innerHTML = `${rocketLongitude}`;
-			document.getElementById(`rocketAltitude`).innerHTML = `${rocketAltitude}ft`;
+			document.getElementById(`rocketAltitude`).innerHTML = `${rocketAltitude}m`;
 			document.getElementById(`rocketStatus`).innerHTML = `${rocketStatus}`;
 			
 			document.getElementById(`rfmFreqCorrection`).innerHTML = `${curFreqOffset}Hz`;
+			
+			document.getElementById(`rocketVelocity`).innerHTML = `${rocketVelocity}m/s`;
 
 		}; 
 		

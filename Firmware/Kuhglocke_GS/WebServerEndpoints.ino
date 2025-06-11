@@ -91,7 +91,7 @@ void configWebServer() {
     resp += "," + String(gps.satellites.value());
     resp += "," + String(gps.location.lat(), 6);
     resp += "," + String(gps.location.lng(), 6);
-    resp += "," + String(gps.altitude.feet());
+    resp += "," + String(gps.altitude.meters());
     resp += "," + String(1);
 
     // SDPresent,SDCapacity,SDAvailable,LogID,SPIFFSSize,SPIFFSFree (6)
@@ -137,6 +137,8 @@ void configWebServer() {
 
     resp += "," + String(core0FreeStack);
     resp += "," + String(core0LoopTime);
+
+    resp += "," + String(rocketVelocity);
     
     request->send(200, "text/plain", resp);
   });

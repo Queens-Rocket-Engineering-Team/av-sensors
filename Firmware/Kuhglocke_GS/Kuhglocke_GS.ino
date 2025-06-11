@@ -1,10 +1,11 @@
 /*
  * Author: Kennan Bays (Kenneract)
  * Created: Aug.2.2024
- * Updated: Aug.20.2024
+ * Updated: Jun.11.2025
  * Purpose: Testing firmware for the Kuhglocke ground station
  * Hardware: QRET Kuhglocke ground station V1.0 (ESP32-S3-N16R2; 16MiB Flash (QSPI), 2MiB PSRAM (QSPI))
- * Environment: ESP32 Core V2.0.5, ESPtool.py V4.2.1
+ * Environment: Arduino IDE 1.8.10, ESP32 Core V2.0.5, ESPtool.py V4.2.1
+ *                                                     NOTE: ESPtool.py only compatible with Arduino IDE 1.x
  * 
  * Suggested Configration:
  * - Board: ESP32S3 Dev Module
@@ -61,7 +62,7 @@
 
 #define EARTH_RADIUS_FEET 20925524.9
 
-const String FIRMWARE_VERSION = "Jun.04.2025, V1.1.0B";
+const String FIRMWARE_VERSION = "Jun.11.2025, V1.1.0C";
 
 // ================================================================================================
 // ================================= \/ GLOBAL CONSTANTS \/ =======================================
@@ -1003,7 +1004,7 @@ void calculateRocketVelocity() {
         
         if (lastTime > 0 && previousAltitude > 0) {
             // Calculate velocity (ft/s)
-			// TODO: ENSURE BOTH ALTIMETER MODULE & KUHGLOCKE ARE CONSISTENTLY USING ALL METERS OR ALL FEET.
+			// TODO: ENSURE BOTH ALTIMETER MODULE & KUHGLOCKE ARE CONSISTENTLY USING ALL METERS.
 			// NOTE: Using meters in code & then adding a quick frontend calculation to change it to feet would be the best setup.
             float timeDiff = (currentTime - lastTime) / 1000.0; // Convert to seconds
             float altDiff = currentAltitude - previousAltitude;
