@@ -219,14 +219,11 @@ void setup() {
   // when packet transmission is finished
   //radio->setDio0Action(setFlag, RISING);
 
-  // Init buzzer
-  initBuzzer();
-  setBuzzerFreq(BEEP_FREQ);
-
   // STARTUP BEEP
-  startBuzzer();
+  delay(BEEP_DELAY);
+  tone(BUZZER_PIN, BEEP_FREQ);
   delay(BEEP_LENGTH);
-  stopBuzzer();
+  tone(BUZZER_PIN, 0);
 
   // Startup delay - Check to enter debug mode
   uint32_t startTime = millis();
