@@ -243,13 +243,15 @@ void loop(){
     sendCANStatus(); //Reporting status
   }//if
 
-  if(flightStage == 5 || flightStage == NULL){
-    digitalWrite(VTX_PWR_PIN, LOW);
-  }else{
-    digitalWrite(VTX_PWR_PIN, HIGH);
-  }
+//  if(flightStage == 5 || flightStage == NULL){
+//    digitalWrite(VTX_PWR_PIN, LOW);
+//  }else{
+//    digitalWrite(VTX_PWR_PIN, HIGH);
+//  }
 
-  prevFlightStage = flightStage;
+  if(millis() == 18000000){
+    digitalWrite(VTX_PWR_PIN, LOW);
+  }
 }
 
 
