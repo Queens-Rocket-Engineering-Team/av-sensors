@@ -3,7 +3,7 @@
  * Hardware: QRET Comms Module Rev2 (WAGGLE)
  * Env: Arduino 1.8.10, STM32duino 2.7.1
  * Created: ~Jun.16.2024
- * Updated: May.26.2025
+ * Updated: Aug.04.2025
  * Purpose: SRAD firmware for communications module Rev2 (WAGGLE).
  * 
  * IMPORTANT: ADD YOUR CALLSIGN IN HERE
