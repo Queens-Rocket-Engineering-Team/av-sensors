@@ -1,5 +1,5 @@
 /*
- * Authors: Kennan Bays
+ * Authors: Kennan Bays, Ethan Toste
  * Hardware: QRET Comms Module Rev2 (WAGGLE)
  * Env: Arduino 1.8.10, STM32duino 2.7.1
  * Created: ~Jun.16.2024
@@ -11,7 +11,7 @@
 
 #include "CANPackets.h"
 #include "pinouts.h"
-#include "STM32_CAN.h" //https://github.com/pazi88/STM32_CAN
+#include "STM32_CAN.h" //IMPORTANT: DO NOT DOWNLOAD THE LATEST VERSION (DOWNLOAD 1.1.2)
 #include <Wire.h>
 #include <RadioLib.h>
 #include <SoftwareSerial.h>
@@ -19,19 +19,14 @@
 #include <SPI.h>
 //#include "flashTable.h"
 
-
-
-// TODO: Implement proper dual-wave driving of the buzzer
-#define BUZZER_PIN BUZZER_A_PIN
-
-
 //TODO: Replace Defines
 #define SERIAL_ENABLE true
 #define SERIAL_BAUD 38400 // NOTE: While using software serial, dont push above 38400
 #define CANBUS_BAUD 500000 //500kbps
+#define BUZZER_PIN BUZZER_A_PIN
 
 //Buzzer Settings
-const uint32_t BEEP_DELAY = 6000;
+const uint32_t BEEP_DELAY = 3000;
 const uint32_t BEEP_LENGTH = 1000;
 const uint32_t BEEP_FREQ = 1000;
 
@@ -214,21 +209,17 @@ void setup() {
   radio = new SX1262(mod);
   radioInit();
 
-
   // set the function that will be called
   // when packet transmission is finished
   //radio->setDio0Action(setFlag, RISING);
+
+  // STARTUP BEEP
+  delay(BEEP_DELAY);
   initBuzzer();
   setBuzzerFreq(BEEP_FREQ);
   startBuzzer();
   delay(BEEP_LENGTH);
   stopBuzzer();
-
-  // STARTUP BEEP
-  delay(BEEP_DELAY);
-  tone(BUZZER_PIN, BEEP_FREQ);
-  delay(BEEP_LENGTH);
-  tone(BUZZER_PIN, 0);
 
   // Startup delay - Check to enter debug mode
   uint32_t startTime = millis();
