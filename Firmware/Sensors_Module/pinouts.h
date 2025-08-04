@@ -1,24 +1,29 @@
 // Header file that contains all pinouts for this module
-#define CAMERA_POWER_PIN PB0
-#define CURR_SENSE_PIN PB1
-#define RGB_DATA_PIN PB3
+#define BUZZER_B_PIN PB1
+#define BOOT1_PIN PB2
+#define ADS2_CS_PIN PB3
+#define ADS2_DRDY_PIN PB4
+#define ADS_SYNC_PIN PB5
+#define ADS_RESET_PIN PB6
+#define RGB_DATA_PIN PB7
 #define CAN_RX_PIN PB8
 #define CAN_TX_PIN PB9
-#define SCL_PIN PB10
-#define SDA_PIN PB11
+#define ADS1_DRDY_PIN PB10
 #define FLASH_CS_PIN PB12
 #define FLASH_SCK_PIN PB13
 #define FLASH_MISO_PIN PB14
 #define FLASH_MOSI_PIN PB15
 
+#define TEMP_PIN PA0
+#define WS_EN PA1
 #define USB_TX_PIN PA2
 #define USB_RX_PIN PA3
-#define BUZZER_PIN PA7
-#define FLASH_RESET_PIN PA8
-#define CAMERA_TX_PIN PA9
-#define CAMERA_RX_PIN PA10
-#define CAMERA_PWM_PIN PA11
+#define ADS1_CS_PIN PA4
+#define ADS_SCLK_PIN PA5
+#define ADS_DOUT_PIN PA6
+#define ADS_DIN_PIN PA7
+#define BUZZER_A_PIN PA10
+#define FLASH_RESET_PIN PA11
+#define SWDIO_PIN PA13
+#define SWCLK_PIN PA14
 #define STATUS_LED_PIN PA15
-
-#define MAGN_ADDR 0x0E 
-#define BME680_ADDR 0x77
