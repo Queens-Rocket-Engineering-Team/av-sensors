@@ -36,7 +36,7 @@ const uint32_t BEEP_LENGTH = 1000;
 const uint32_t BEEP_FREQ = 1000;
 
 // LoRa Radio Settings
-const uint8_t CALLSIGN[6] = {'V','E','3','D','V','V'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
+const uint8_t CALLSIGN[6] = {'V','A','3','F','G','K'}; // VERY IMPORTANT; FILL OUT. MUST BE 6 CHARS
 uint8_t RADIO_TX_POWER = 20; //dBm
 double FREQUENCY = 905.4;
 double BANDWIDTH = 62.5;
@@ -218,6 +218,11 @@ void setup() {
   // set the function that will be called
   // when packet transmission is finished
   //radio->setDio0Action(setFlag, RISING);
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
+  startBuzzer();
+  delay(BEEP_LENGTH);
+  stopBuzzer();
 
   // STARTUP BEEP
   delay(BEEP_DELAY);
