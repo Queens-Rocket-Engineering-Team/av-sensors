@@ -1,7 +1,7 @@
 /*
- * Authors: Kennan Bays, Raquel Donovan
+ * Authors: Kennan Bays, Raquel Donovan, Ethan Toste
  * Created: ~Aug.18.2024
- * Updated: Jun.9.2025
+ * Updated: Aug.04.2025
  * Hardware: QRET SRAD GPS Module Rev2.0 (NASONOV)
  * Environment: STM32duino 2.7.1
  * Purpose: Firmware for QRET SRAD GPS module.
@@ -13,7 +13,7 @@
 
 #include "CANPackets.h" //TODO: Update CanPackets to be the same across ALL MODULE FIRMWARE. Notable additions are the camera module ID
 #include "pinouts.h"
-#include "STM32_CAN.h" //https://github.com/pazi88/STM32_CAN
+#include "STM32_CAN.h" //IMPORTANT: DO NOT DOWNLOAD THE LATEST VERSION (DOWNLOAD 1.1.2)
 #include <Wire.h>
 #include <TinyGPSPlus.h>
 #include <SerialFlash.h>
@@ -28,10 +28,9 @@
 #define CANBUS_BAUD 500000 //500kbps
 
 //Buzzer Settings
-const uint32_t BEEP_DELAY = 8000;
+const uint32_t BEEP_DELAY = 6000;
 const uint32_t BEEP_LENGTH = 1000;
 const uint32_t BEEP_FREQ = 1000;
-
 
 // The TinyGPSPlus object
 TinyGPSPlus gps;
@@ -230,5 +229,5 @@ void loop() {
     logDataToFlash();
     lastGPSLog = millis();
   }//if
-
+ 
 }//loop()
