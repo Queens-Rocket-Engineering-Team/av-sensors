@@ -1,3 +1,13 @@
+/*
+ * Authors: Kennan Bays, Ethan Toste
+ * Hardware: QRET Camera Module Rev1 (OCELLUS)
+ * Env: Arduino 1.8.10, STM32duino 2.7.1
+ * Created: ~May.31.2025
+ * Updated: Aug.04.2025
+ * Purpose: SRAD firmware for camera module Rev1 (OCELLUS).
+*/
+
+
 #include <Wire.h>
 #include <SPI.h>
 #include <Tone.h>
@@ -5,7 +15,7 @@
 #include <SoftwareSerial.h>
 #include "pinouts.h"
 #include "CANpackets.h"
-#include "STM32_CAN.h"
+#include "STM32_CAN.h" //IMPORTANT: DO NOT DOWNLOAD THE LATEST VERSION (DOWNLOAD 1.1.2)
 #include <HardwareSerial.h>
 
 // Define the serial port for Tramp protocol communication
@@ -337,7 +347,7 @@ void sendCANStatus(){
 
 // //VARIABLES
 // //buzzer
-// const uint32_t BEEP_DELAY = 6000;
+// const uint32_t BEEP_DELAY = 9000;
 // const uint32_t BEEP_LENGTH = 1000;
 // const uint32_t BUZZER_TONE = 1000;
 // const uint32_t BUZZER_TONE_Q = 500;
