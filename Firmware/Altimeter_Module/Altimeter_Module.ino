@@ -1,27 +1,19 @@
 /*
 QRET SRAD Avionics module - AIM
-Altimeter Module Firmware
-    V 1.0
+Authors: Brent Naumann, Tristan Alderson, Kennan Bays, Caelan Donovan, Ethan Toste
+Env: Arduino 1.8.10, STM32duino 2.7.1
+Updated: Aug.12.2025
+Purpose: QRET SRAD Avionics module - AIM Altimeter Module Firmware V 2.0 (STINGER)
 
 Sensors used:
  - ms5611 : Pressure and Temperature
  - mpu6050 : Gyroscope
- - kx134 : accelerometer
-
-Written by:
-    Brent Naumann
-    Tristan Alderson
-    Kennan Bays
-    Caelan Donovan
-Flash capability proveded by: 
-    Kennan Bays`
-
+ - kx134 : accelerometer 
 */
+
 //Libraries to include
 #include <Wire.h>
-
 #include <SimpleKalmanFilter.h>
-#include <MS5xxx.h>
 #include <Adafruit_MPU6050.h>
 #include <SparkFun_KX13X.h> 
 #include <SerialFlash.h>
@@ -29,17 +21,17 @@ Flash capability proveded by:
 #include "flashTable.h"
 #include <tone.h>
 #include <CANpackets.h>
-#include "STM32_CAN.h"
+#include "STM32_CAN.h" //IMPORTANT: DO NOT DOWNLOAD THE LATEST VERSION (DOWNLOAD 1.1.2)
 #include "pinouts.h"
 #include <HardwareSerial.h>
+#include "MS5611.h" // https://github.com/RobTillaart/MS5611
 
 
-// TODO: RE-WORK BUZZER FOR ALL MODULES
 #define BUZZER_TONE 1000
 #define BUZZER_TONE_Q 500
 const uint32_t BEEP_FREQ = 1000;
 
-#define SERIAL_BAUD_RATE 38400
+#define SERIAL_BAUD_RATE 115200
 //#define SERIAL_BAUD_RATE 9600
 
 //--- FILTER SETTINGS
@@ -64,7 +56,7 @@ const uint32_t TABLE_SIZE = 16646144;
 #define CANBUS_DATAINT 500 //[ms] interval bewteen each CANBUS message send.
 
 //--- PREFLIGHT SETTINGS
-#define PRE_DATAINT 50  //[ms] interval bewteen each log to FLASH.
+#define PRE_DATAINT 35  //[ms] interval bewteen each log to FLASH.
 
 //--- LAUNCH SETTINGS
 #define LAUNCH_THRESHOLD  25  // [m/s]-mpu ; [g]-qma. Acceleration threshold to declare launch
@@ -78,7 +70,7 @@ const uint32_t TABLE_SIZE = 16646144;
 #define DROGUE_DATAINT 20 //  [ms] interval between each log to FLASH.
 #define MAIN_DATAINTFAST 500 // [ms] interval between each log to FLASH - slowed rate before 5000 ms
 #define MAIN_DATAINTSLOW 1000 // [ms] interval between each log to FLASH - slowed rate after 5000 ms
-#define LAND_THRESHOLD -0.3//[m/s] Velocity Threshold to declare land
+#define LAND_THRESHOLD -0.5//[m/s] Velocity Threshold to declare land
 #define LAND_GRACE  2000 // [ms] Time for measurements to be above threshold before Landing is declared
 const uint16_t MAIN_DEPLOY_THRESHOLD = 1500/3.281;
 
@@ -86,14 +78,12 @@ const uint16_t MAIN_DEPLOY_THRESHOLD = 1500/3.281;
 #define LAND_DATAINT 1000  //[ms] interval between each log to FLASH.
 #define LAND_SLOW_DATAINT 2000 //[ms] interval between each log to FLASH.
 
-
-
 // Global objects to declare
 HardwareSerial usb(USB_RX_PIN, USB_TX_PIN);
 //#define usb Serial              //For debugging when not using CANBUS
 
 SimpleKalmanFilter kalmanFilter(M_UNCERT,EST_UNCERT,NOISE_SENS); 
-MS5xxx ms5611(&Wire);
+MS5611 ms5611(MS5611_ADDR, &Wire);
 Adafruit_MPU6050 mpu6050;
 SparkFun_KX134 kxAccel;
 
@@ -188,13 +178,6 @@ void setup(){
     
   digitalWrite(STATUS_LED_PIN,LOW);
 
-//    for (int i=0 ; i<5 ; i++){
-//      digitalWrite(STATUS_LED_PIN,HIGH);
-//      delay(250);
-//      digitalWrite(STATUS_LED_PIN,LOW);
-//      delay(750);
-//    }
-
   usb.println("Connecting to required devices...");
             
   /*------------------*\
@@ -203,33 +186,34 @@ void setup(){
   usb.print("SEARCHING: SPI Flash chip");
   while (!SerialFlash.begin(FLASH_CS_PIN)) {
     delay(250);
-    //toggleStatusLED();
   }//while
   usb.println("  - CONNECTED");
-      SerialFlash.eraseAll();
-      while (SerialFlash.ready() == false) {}  
+  
+  while (SerialFlash.ready() == false) {}  
+
   // Initialize FlashTable object
-  for (int i=0; i<3; i++) {
-  // tone(BUZZER_A_PIN, BUZZER_TONE_Q);
-  delay(100);
-  noTone(BUZZER_A_PIN);
-  delay(100);
-  }
   flash.init(&SerialFlash, &usb);
+
+  // Note done loading
+  for (int i=0; i<3; i++) {
+    startBuzzer();
+    delay(100);
+    stopBuzzer();
+    delay(100);
+  }
 
 
   /*------------------*\
   |    MS5611 SETUP    |
   \*------------------*/
   usb.print("SEARCHING: MS5611");      
-  ms5611.connect(); 
-  
-  while(ms5611.connect()>0) {  //Wait for ms5611 to connect
-    delay(10);   
-  }//while
-  usb.println("  - CONNECTED");      //ms5611 connected
-  ms5611.ReadProm();                    //Read the calibration coefficients
-  ms5611.setOversampling(0x0);
+  while (!ms5611.begin()) {
+    delay(10);
+  }
+  usb.println("  - CONNECTED"); //MS5611 connected
+
+  // Set oversampling
+  ms5611.setOversampling(OSR_ULTRA_LOW);
 
   /*-------------------*\
   |    MPU6050 SETUP    |
@@ -248,20 +232,33 @@ void setup(){
   /*--------------------*\
   |    KX134 SETUP    |
   \*--------------------*/
-  //float qmaOffsetX = -1.495;
-  //float qmaOffsetY = -0.485;
-  //float qmaOffsetZ = 0.825;
+  float qmaOffsetX = -1.495;
+  float qmaOffsetY = -0.485;
+  float qmaOffsetZ = 0.825;
 
   usb.print("SEARCHING: KX134");
-  
-  while(!kxAccel.begin(KX134_ADDR)) {       //Wait for kx134 to connect
+
+  while(!kxAccel.begin(KX134_ADDR)) {       // Wait for kx134 to connect
       delay(10);  
+      for (byte address = 1; address < 127; ++address) {
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+
+        if (error == 0) {
+          Serial.print("Found device at 0x");
+          Serial.println(address, HEX);
+        }
+      }
   }
-  usb.println("  - CONNECTED");    //kx134 connected
-  
+  usb.println("  - CONNECTED");
+
+  usb.println("Resetting KX134...");
   kxAccel.softwareReset();
+  delay(100); // Wait for reset to complete
+
+  usb.println("Setting range...");
   kxAccel.setRange(SFE_KX134_RANGE32G);
-  //kxAccel.setOffset(qmaOffsetX,qmaOffsetY,qmaOffsetZ);
+  usb.println("KX134 configured.");
 
   // Get base measurements
   usb.println("Aquiring base Pressure...");
@@ -297,6 +294,10 @@ void setup(){
 
   digitalWrite(STATUS_LED_PIN, HIGH);
 
+  prev_alt = altitudeFind(ms5611.getPressurePascal(), Po, To);
+  prevTime = millis();
+  vel = 0;   // reset filter
+
 }//setup()
 
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -306,33 +307,45 @@ void setup(){
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 void loop(){
+
   /*---------|----------*\
       |SENSOR READING|    
   \*---------|----------*/
   
   //read pressure/temp
-  ms5611.Readout();     //Read the data from the ms5611, which gets stored in the ms5xxx object
-  
-  float P = ms5611.GetPres();              //Get variables for pressure and temperature
-  float T = ms5611.GetTemp()/100 + 273;
+  ms5611.read();     //Read the data from the ms5611, which gets stored in object
+
+  //Get variables for pressure and temperature
+  float P = ms5611.getPressurePascal();  // Pascals
+  float T = ms5611.getTemperature(); // Celcius
 
   //Kalman Filtering on pressure
   float P_filter = kalmanFilter.updateEstimate(P);
 
   //Find Altitude from filtered Pressure
-  float alt = altitudeFind(P_filter,Po,To);
+  // float alt = altitudeFind(P_filter,Po,To);
+
+  // TODO: FIX IN THE FUTURE
+  // Override the inaccurate altitude system using raw pressure reading (im assuming its in pascals)
+  float alt = (288.15d/0.0065d) * (1-pow(P_filter/101325.0f, 0.190284f));
 
   //read gyro
   mpu6050.getEvent(&a, &g, &temp);
 
   //read accelerometer
   kxAccel.getAccelData(&kxData);
-  //kxAccel.offsetValues(kxData.xData, kxData.yData, kxData.zData);
+  // kxAccel.offsetValues(kxData.xData, kxData.yData, kxData.zData);
 
   //--- CANBUS DATA SENDING
   if (millis() - lastSend >= CANBUS_DATAINT){
     //send Temperature, altitude, and Flight stage
     //sendCANtemp(T);
+    usb.print("Pres(Pa): ");
+    usb.print(P_filter, 2);
+    usb.print(", Temp(C): ");
+    usb.print(T);
+    usb.print(", Alt(m): ");
+    usb.println(alt);
     sendCANaltitude(alt);
     sendCANstage(STATE);
     lastSend = millis();
@@ -447,8 +460,7 @@ void loop(){
      |  DATA LOGGING |    
 \*---/\---/\---/\---/\---*/
 
-void logDataToFlash( float pressure,float pressure_filter,float temp,sensors_event_t *a,
-                    sensors_event_t *g,outputData *kxData){
+void logDataToFlash( float pressure, float pressure_filter, float temp,sensors_event_t *a, sensors_event_t *g, outputData *kxData){
   uint32_t dataArr[11] = {0,0,0,0,0,0,0,0,0,0,0};
 
   dataArr[0] = millis();
@@ -458,21 +470,28 @@ void logDataToFlash( float pressure,float pressure_filter,float temp,sensors_eve
   // dataArr[4] = static_cast<uint32_t>(a->acceleration.x*1e6);
   // dataArr[5] = static_cast<uint32_t>(a->acceleration.y*1e6);
   dataArr[3] = flash.unsignify(a->acceleration.z*10000);
-
+  
   dataArr[4] = flash.unsignify(kxData->xData*10000);
   dataArr[5] = flash.unsignify(kxData->yData*10000);
   dataArr[6] = flash.unsignify(kxData->zData*10000);
-  
+
   //gyro data
   dataArr[7] = flash.unsignify(g->gyro.x*10000);
   dataArr[8] = flash.unsignify(g->gyro.y*10000);
   dataArr[9] = flash.unsignify(g->gyro.z*10000);
 
+  // dataArr[7] = flash.unsignify(altitudeFind(pressure_filter, altimeterBasePres(500),altimeterBaseTemp(500)));
+
   //state
   dataArr[10] = STATE;
 
   //write to FLASH
-  flash.writeRow(dataArr);
+  bool success = flash.writeRow(dataArr);
+  if (success) {
+    //usb.println("[MDE] Data logged successfully");
+  } else {
+      usb.println("[MDE] Flash write failed!");
+  }
 
 }//logDataToFlash()
 
@@ -533,7 +552,7 @@ bool detectLand(float alt) {
   
   vel = 0.9*vel + 0.1*dh;
   
-  if (vel > LAND_THRESHOLD && vel <= LAND_THRESHOLD) {  //check if velocity is less than -0.5 [m/s]
+  if (vel <= LAND_THRESHOLD) {  //check if velocity is less than -0.5 [m/s]
     
     if (!potentialLand) {
       //if first measurement, begin Land countdown
@@ -589,7 +608,7 @@ void debugMode() {
 
     if (cmd == 'I') {
       // "Identify" command; return board name
-      usb.println(F("[MDE] OKA_ALT"));
+      usb.println(F("[MDE] STINGER_ALT"));
     }//if
     if (cmd == 'F') {
       // "FlashInfo" command; return flash usage stats
@@ -602,6 +621,15 @@ void debugMode() {
       // "DumpFlash" command; dump all flash contents via serial
       flash.beginDataDump(&usb);
     }//if
+    if (cmd == 'L') {
+      // LOG DATA
+      //Get variables for pressure and temperature
+      float P = ms5611.getPressurePascal(); //pascals
+      float T = ms5611.getTemperature(); //celcius
+      float P_filter = kalmanFilter.updateEstimate(P);
+      mpu6050.getEvent(&a, &g, &temp);
+      logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+    }  
     if (cmd == 'E') {
       // "EraseFlash" command; completely erase contents of flash.
       // Should be restarted afterwards
@@ -613,14 +641,14 @@ void debugMode() {
     }//if
     if (cmd == 'Q') {
         // QUERY SENSORS
-        kxAccel.enableAccel();
+        // kxAccel.enableAccel();
           //Read pressure/temperature
-        ms5611.Readout();
+        ms5611.read();
         usb.println("[MDE] --MS5611--");
-        usb.print(F("[MDE] Temperature (0.01C): "));
-        usb.println(ms5611.GetTemp()/100 + 273);
+        usb.print(F("[MDE] Temperature (1.00C): "));
+        usb.println(ms5611.getTemperature());
         usb.print(F("[MDE] Pressure (Pa): "));
-        usb.println(ms5611.GetPres());
+        usb.println(ms5611.getPressurePascal());
 
         //read gyro
       sensors_event_t a, g, temp;
@@ -634,17 +662,17 @@ void debugMode() {
       usb.println(g.gyro.z);
       
         //read accelerometer
-      outputData kxData;
-      kxAccel.getAccelData(&kxData);
+      // outputData kxData;
+      //kxAccel.getAccelData(&kxData);
       //kxAccel.offsetValues(kxData.xData, kxData.yData, kxData.zData);
 
-      usb.println("[MDE] --kxAccel--");
-      usb.print("[MDE] X Acceleration (g): ");
-      usb.println(kxData.xData);
-      usb.print("[MDE] Y Acceleration (g): ");
-      usb.println(kxData.yData);
-      usb.print("[MDE] Z Acceleration (g): ");
-      usb.println(kxData.zData);   
+      // usb.println("[MDE] --kxAccel--");
+      // usb.print("[MDE] X Acceleration (g): ");
+      // usb.println(kxData.xData);
+      // usb.print("[MDE] Y Acceleration (g): ");
+      // usb.println(kxData.yData);
+      // usb.print("[MDE] Z Acceleration (g): ");
+      // usb.println(kxData.zData);   
     }//if
 
   }//while
@@ -677,8 +705,8 @@ float altimeterBaseTemp(int sample){
   float sum = 0;
 
   for (int i=0 ; i<sample ; i++){
-    ms5611.Readout();
-    float Ti = ms5611.GetTemp()/100 + 273;
+    ms5611.read();
+    float Ti = ms5611.getTemperature(); //celcius
     sum +=Ti;
   }//for
   float To = sum/sample;
@@ -690,8 +718,8 @@ float altimeterBasePres(int sample){
   float sum = 0;
   
   for (int i=0 ; i<sample ; i++){
-    ms5611.Readout();
-    float Pi = ms5611.GetPres();
+    ms5611.read();
+    float Pi = ms5611.getPressurePascal(); //pascals
     sum +=Pi;
   }//for
   float Po = sum/sample;
@@ -710,7 +738,7 @@ void sendCANaltitude(float alt){
 
   //Adjust altitude into uin32_t 
   //pushes decimals to first 8 bits
-  uint32_t altint = (alt*100);
+  int32_t altint = (alt);
   
   //Start shifting bits (b0 = LSB)
   uint8_t b0 = altint & 0xFF;
