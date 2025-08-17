@@ -2,7 +2,7 @@
 QRET SRAD Avionics module - AIM
 Authors: Brent Naumann, Tristan Alderson, Kennan Bays, Caelan Donovan, Ethan Toste
 Env: Arduino 1.8.10, STM32duino 2.7.1
-Updated: Aug.12.2025
+Updated: Aug.16.2025
 Purpose: QRET SRAD Avionics module - AIM Altimeter Module Firmware V 2.0 (STINGER)
 
 Sensors used:
@@ -230,32 +230,42 @@ void setup(){
     mpu6050.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
   /*--------------------*\
-  |    KX134 SETUP    |
+  |    KX134 SETUP      |
   \*--------------------*/
   float qmaOffsetX = -1.495;
   float qmaOffsetY = -0.485;
   float qmaOffsetZ = 0.825;
-
-  usb.print("SEARCHING: KX134");
-
-  while(!kxAccel.begin(KX134_ADDR)) {       // Wait for kx134 to connect
-      delay(10);  
+  
+  usb.print("SEARCHING: KX134...");
+  
+  // Try initializing at default address (0x1F for SparkFun KX134)
+  if (!kxAccel.begin(0x1F)) {
+      usb.println(" NOT FOUND!");
+  
+      // Do one scan of all I2C devices
+      usb.println("I2C scan results:");
       for (byte address = 1; address < 127; ++address) {
-        Wire.beginTransmission(address);
-        byte error = Wire.endTransmission();
-
-        if (error == 0) {
-          Serial.print("Found device at 0x");
-          Serial.println(address, HEX);
-        }
+          Wire.beginTransmission(address);
+          if (Wire.endTransmission() == 0) {
+              usb.print(" - Found device at 0x");
+              usb.println(address, HEX);
+          }
+      }
+  
+      // Halt here so it doesn’t spam forever
+      usb.println("ERROR: KX134 not detected. Halting.");
+      while (1) {
+          digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+          delay(250);
       }
   }
-  usb.println("  - CONNECTED");
-
+  usb.println(" CONNECTED");
+  
+  // Reset and configure
   usb.println("Resetting KX134...");
   kxAccel.softwareReset();
-  delay(100); // Wait for reset to complete
-
+  delay(500); // allow full reset
+  
   usb.println("Setting range...");
   kxAccel.setRange(SFE_KX134_RANGE32G);
   usb.println("KX134 configured.");
