@@ -2,7 +2,7 @@
 QRET SRAD Avionics module - AIM
 Authors: Brent Naumann, Tristan Alderson, Kennan Bays, Caelan Donovan, Ethan Toste
 Env: Arduino 1.8.10, STM32duino 2.7.1
-Updated: Aug.16.2025
+Updated: Aug.17.2025
 Purpose: QRET SRAD Avionics module - AIM Altimeter Module Firmware V 2.0 (STINGER)
 
 Sensors used:
@@ -229,36 +229,59 @@ void setup(){
     mpu6050.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu6050.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
-  /*--------------------*\
-  |    KX134 SETUP    |
-  \*--------------------*/
-  float qmaOffsetX = -1.495;
-  float qmaOffsetY = -0.485;
-  float qmaOffsetZ = 0.825;
+/*--------------------*\
+|    KX134 SETUP       |
+\*--------------------*/
+float qmaOffsetX = -1.495;
+float qmaOffsetY = -0.485;
+float qmaOffsetZ = 0.825;
 
-  usb.print("SEARCHING: KX134");
+usb.print("SEARCHING: KX134");
 
-  while(!kxAccel.begin(KX134_ADDR)) {       // Wait for kx134 to connect
-      delay(10);  
-      for (byte address = 1; address < 127; ++address) {
-        Wire.beginTransmission(address);
-        byte error = Wire.endTransmission();
+// Optional: slow down I2C for better reliability
+Wire.setClock(100000);
 
-        if (error == 0) {
-          Serial.print("Found device at 0x");
-          Serial.println(address, HEX);
+bool kx_detected = false;
+byte kx_address = 0;
+
+while (!kx_detected) {
+    // Try common addresses
+    if (kxAccel.begin(0x18)) {
+        kx_detected = true;
+        kx_address = 0x18;
+    } 
+    else if (kxAccel.begin(0x19)) {
+        kx_detected = true;
+        kx_address = 0x19;
+    }
+
+    if (!kx_detected) {
+        usb.println("KX134 not found, scanning I2C bus...");
+        for (byte address = 1; address < 127; ++address) {
+            Wire.beginTransmission(address);
+            byte error = Wire.endTransmission();
+            if (error == 0) {
+                usb.print("Found device at 0x");
+                usb.println(address, HEX);
+            }
         }
-      }
-  }
-  usb.println("  - CONNECTED");
+        delay(500);
+    }
+}
 
-  usb.println("Resetting KX134...");
-  kxAccel.softwareReset();
-  delay(100); // Wait for reset to complete
+usb.print("KX134 detected at address 0x");
+usb.println(kx_address, HEX);
 
-  usb.println("Setting range...");
-  kxAccel.setRange(SFE_KX134_RANGE32G);
-  usb.println("KX134 configured.");
+// Software reset immediately after successful detection
+kxAccel.softwareReset();
+delay(50);
+
+// Set accelerometer range
+kxAccel.setRange(SFE_KX134_RANGE32G);
+usb.println("KX134 configured.");
+
+// Start accelerometer readings
+kxAccel.enableAccel();
 
   // Get base measurements
   usb.println("Aquiring base Pressure...");
