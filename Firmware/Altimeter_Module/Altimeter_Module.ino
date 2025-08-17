@@ -138,98 +138,167 @@ int landingTimer =0;
 
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
-void setup() {
-    // --- Pin Setup ---
-    pinMode(BUZZER_A_PIN, OUTPUT);
-    pinMode(BUZZER_B_PIN, OUTPUT);
-    pinMode(STATUS_LED_PIN, OUTPUT);
-    pinMode(FIRE_MAIN_PIN, OUTPUT);
-    pinMode(FIRE_DROGUE_PIN, OUTPUT);
+void setup(){
 
-    // --- SPI Setup ---
-    SPI.setSCLK(PB13);
-    SPI.setMISO(PB14);
-    SPI.setMOSI(PB15);
+  // Configure pinmodes
+  pinMode(BUZZER_A_PIN, OUTPUT);
+  pinMode(BUZZER_B_PIN, OUTPUT);
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  pinMode(FIRE_MAIN_PIN,OUTPUT);
+  pinMode(FIRE_DROGUE_PIN,OUTPUT);
+  
 
-    // --- Serial Setup ---
-    usb.begin(SERIAL_BAUD_RATE);
-    delay(500);
+  // Configure SPI
+  SPI.setSCLK(PB13);
+  SPI.setMISO(PB14);
+  SPI.setMOSI(PB15);
 
-    usb.println("Starting setup...");
+  //Configure I2C PINS
+  Wire.setSDA(SDA_PIN);
+  Wire.setSCL(SCL_PIN);
+  Wire.begin();
 
-    // --- I2C Setup ---
-    Wire.begin(SDA_PIN, SCL_PIN);  // START the I2C bus on STM32
+  //Start CANBUS
+  canb.begin(); //automatic retransmission can be done using arg "true"
+  canb.setBaudRate(500000); //500kbps
 
-    // --- MS5611 Setup (pressure/temperature) ---
-    usb.print("Searching: MS5611...");
-    while (!ms5611.begin()) {
-        delay(10);
-    }
-    usb.println("CONNECTED");
-    ms5611.setOversampling(OSR_ULTRA_LOW);
+  //Start Serial
+  usb.begin(SERIAL_BAUD_RATE);
+  delay(1000);
 
-    // --- MPU6050 Setup ---
-    usb.print("Searching: MPU6050...");
-    while (!mpu6050.begin(MPU6050_ADDR)) {
-        delay(10);
-    }
-    usb.println("CONNECTED");
-    mpu6050.setAccelerometerRange(MPU6050_RANGE_16_G);
+  usb.print("BUZZER REACHED");      
+
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
+
+  // // STARTUP BEEP
+  startBuzzer();
+  delay(1000);
+  stopBuzzer();
+    
+  digitalWrite(STATUS_LED_PIN,LOW);
+
+  usb.println("Connecting to required devices...");
+            
+  /*------------------*\
+  |    FLASH SETUP    |
+  \*------------------*/
+  usb.print("SEARCHING: SPI Flash chip");
+  while (!SerialFlash.begin(FLASH_CS_PIN)) {
+    delay(250);
+  }//while
+  usb.println("  - CONNECTED");
+  
+  while (SerialFlash.ready() == false) {}  
+
+  // Initialize FlashTable object
+  flash.init(&SerialFlash, &usb);
+
+  // Note done loading
+  for (int i=0; i<3; i++) {
+    startBuzzer();
+    delay(100);
+    stopBuzzer();
+    delay(100);
+  }
+
+
+  /*------------------*\
+  |    MS5611 SETUP    |
+  \*------------------*/
+  usb.print("SEARCHING: MS5611");      
+  while (!ms5611.begin()) {
+    delay(10);
+  }
+  usb.println("  - CONNECTED"); //MS5611 connected
+
+  // Set oversampling
+  ms5611.setOversampling(OSR_ULTRA_LOW);
+
+  /*-------------------*\
+  |    MPU6050 SETUP    |
+  \*-------------------*/  
+    usb.print("SEARCHING: MPU6050");
+
+    while(!mpu6050.begin(MPU6050_ADDR)) {
+      delay(10);
+    }//while()
+    usb.println("  - CONNECTED");    //ms6050 connected
+
+    mpu6050.setAccelerometerRange(MPU6050_RANGE_16_G); 
     mpu6050.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu6050.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
-    // --- KX134 Setup ---
-    usb.print("Searching: KX134...");
-    if (!kxAccel.begin(Wire)) {
-        usb.println("NOT FOUND!");
-        usb.println("I2C scan results:");
-        for (byte address = 1; address < 127; ++address) {
-            Wire.beginTransmission(address);
-            if (Wire.endTransmission() == 0) {
-                usb.print(" - Found device at 0x");
-                usb.println(address, HEX);
-            }
+  /*--------------------*\
+  |    KX134 SETUP    |
+  \*--------------------*/
+  float qmaOffsetX = -1.495;
+  float qmaOffsetY = -0.485;
+  float qmaOffsetZ = 0.825;
+
+  usb.print("SEARCHING: KX134");
+
+  while(!kxAccel.begin(KX134_ADDR)) {       // Wait for kx134 to connect
+      delay(10);  
+      for (byte address = 1; address < 127; ++address) {
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+
+        if (error == 0) {
+          Serial.print("Found device at 0x");
+          Serial.println(address, HEX);
         }
-        usb.println("ERROR: KX134 not detected. Halting.");
-        while (1) { digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN)); delay(250); }
-    }
-    usb.println("CONNECTED");
+      }
+  }
+  usb.println("  - CONNECTED");
 
-    kxAccel.softwareReset();
-    delay(1000);
-    kxAccel.setRange(SFE_KX134_RANGE32G);
-    usb.println("KX134 configured.");
+  usb.println("Resetting KX134...");
+  kxAccel.softwareReset();
+  delay(100); // Wait for reset to complete
 
-    // --- Base Measurements ---
-    usb.println("Acquiring base pressure...");
-    Po = altimeterBasePres(500);
-    usb.print("Base Pressure: "); usb.println(Po);
+  usb.println("Setting range...");
+  kxAccel.setRange(SFE_KX134_RANGE32G);
+  usb.println("KX134 configured.");
 
-    usb.println("Acquiring base temperature...");
-    To = altimeterBaseTemp(500);
-    usb.print("Base Temperature: "); usb.println(To);
+  // Get base measurements
+  usb.println("Aquiring base Pressure...");
+  Po = altimeterBasePres(500);
+  usb.print("Base Pressure: ");
+  usb.println(Po);
+  
+  usb.println("Aquiring base Temperature...");
+  To = altimeterBaseTemp(500);
+  usb.print("Base Temperature: ");
+  usb.println(To);   
+  
+  usb.println("");
+  usb.println("All sensors set up and configured.");
+  usb.println("");
 
-    usb.println("All sensors initialized successfully.");
+  // Startup delay - Check to enter debug mode
+  usb.println("[MDE] SEND SERIAL TO ENTER DEBUG");
+  uint32_t startTime = millis();
+  while (!usb.available() and millis()-startTime < 4000) {}
+  
+  if (usb.available()) {
+    byte d = usb.read();
+    emptySerialBuffer();
+    usb.println("[MDE] Entered Debug Mode");
+    debugMode();
+    while (true) {}
+  }//if
 
-    // --- Startup delay / debug check ---
-    usb.println("[MDE] SEND SERIAL TO ENTER DEBUG");
-    uint32_t startTime = millis();
-    while (!usb.available() && millis() - startTime < 4000) {}
-    if (usb.available()) {
-        byte d = usb.read();
-        emptySerialBuffer();
-        usb.println("[MDE] Entered Debug Mode");
-        debugMode();
-    }
+  usb.println("Beginning PreFlight...");
 
-    // --- Start accelerometer ---
-    kxAccel.enableAccel();
+  kxAccel.enableAccel();  //Start accelerometer reading
 
-    // --- Initialize prev_alt and prevTime ---
-    prev_alt = altitudeFind(ms5611.getPressurePascal(), Po, To);
-    prevTime = millis();
-    vel = 0;
-}
+  digitalWrite(STATUS_LED_PIN, HIGH);
+
+  prev_alt = altitudeFind(ms5611.getPressurePascal(), Po, To);
+  prevTime = millis();
+  vel = 0;   // reset filter
+
+}//setup()
 
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
