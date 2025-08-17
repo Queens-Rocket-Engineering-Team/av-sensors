@@ -254,7 +254,15 @@ while (!kx_detected) {
         kx_detected = true;
         kx_address = 0x19;
     }
-
+    else if (kxAccel.begin(0x1F)){
+        kx_detected = true;
+        kx_address = 0x1F;
+    }
+    else if (kxAccel.begin(Wire)){
+        kx_detected = true;
+        kx_address = 0x1F;
+        usb.print("Test");
+    }
     if (!kx_detected) {
         usb.println("KX134 not found, scanning I2C bus...");
         for (byte address = 1; address < 127; ++address) {
