@@ -239,7 +239,7 @@ void setup(){
   usb.print("SEARCHING: KX134...");
   
   // Try initializing at default address (0x1F for SparkFun KX134)
-  if (!kxAccel.begin(0x1F)) {
+if (!kxAccel.begin(Wire, 0x1F)) {
       usb.println(" NOT FOUND!");
   
       // Do one scan of all I2C devices
