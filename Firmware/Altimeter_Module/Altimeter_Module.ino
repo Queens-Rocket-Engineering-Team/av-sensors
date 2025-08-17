@@ -156,7 +156,16 @@ void setup(){
   //Configure I2C PINS
   Wire.setSDA(SDA_PIN);
   Wire.setSCL(SCL_PIN);
-  Wire.begin();
+  
+  Wire.beginTransmission(0x1F);
+  Wire.write(0x13); // KX134 WHO_AM_I register
+  Wire.endTransmission(false);
+  Wire.requestFrom(0x1F, 1);
+  if (Wire.available()) {
+      uint8_t whoami = Wire.read();
+      usb.print("KX134 WHO_AM_I = 0x");
+      usb.println(whoami, HEX);
+  }
 
   //Start CANBUS
   canb.begin(); //automatic retransmission can be done using arg "true"
@@ -239,7 +248,7 @@ void setup(){
   usb.print("SEARCHING: KX134...");
   
   // Try initializing at default address (0x1F for SparkFun KX134)
-if (!kxAccel.begin(Wire, 0x1F)) {
+if (!kxAccel.begin(Wire)) {
       usb.println(" NOT FOUND!");
   
       // Do one scan of all I2C devices
@@ -264,7 +273,7 @@ if (!kxAccel.begin(Wire, 0x1F)) {
   // Reset and configure
   usb.println("Resetting KX134...");
   kxAccel.softwareReset();
-  delay(500); // allow full reset
+  delay(1000); // allow full reset
   
   usb.println("Setting range...");
   kxAccel.setRange(SFE_KX134_RANGE32G);
