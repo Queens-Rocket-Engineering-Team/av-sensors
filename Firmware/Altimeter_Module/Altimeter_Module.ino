@@ -232,64 +232,60 @@ void setup(){
 /*--------------------*\
 |    KX134 SETUP       |
 \*--------------------*/
-float qmaOffsetX = -1.495;
-float qmaOffsetY = -0.485;
-float qmaOffsetZ = 0.825;
 
 usb.print("SEARCHING: KX134");
 
-// Optional: slow down I2C for better reliability
+// Optional: slow down I2C for reliability
 Wire.setClock(100000);
 
 bool kx_detected = false;
-byte kx_address = 0;
+byte kx_address = 0x1F;   // Default address for KX134
 
-while (!kx_detected) {
-    // Try common addresses
-    if (kxAccel.begin(0x18)) {
-        kx_detected = true;
-        kx_address = 0x18;
-    } 
-    else if (kxAccel.begin(0x19)) {
-        kx_detected = true;
-        kx_address = 0x19;
-    }
-    else if (kxAccel.begin(0x1F)){
-        kx_detected = true;
-        kx_address = 0x1F;
-    }
-    else if (kxAccel.begin(Wire)){
-        kx_detected = true;
-        kx_address = 0x1F;
-        usb.print("Test");
-    }
-    if (!kx_detected) {
-        usb.println("KX134 not found, scanning I2C bus...");
-        for (byte address = 1; address < 127; ++address) {
-            Wire.beginTransmission(address);
-            byte error = Wire.endTransmission();
-            if (error == 0) {
-                usb.print("Found device at 0x");
-                usb.println(address, HEX);
-            }
+// Try initializing with SparkFun lib
+if (kxAccel.begin(Wire, kx_address)) {
+    kx_detected = true;
+    usb.print("KX134 connected at 0x");
+    usb.println(kx_address, HEX);
+} else {
+    // If init fails, read WHO_AM_I directly
+    usb.println("KX134 begin() failed, checking WHO_AM_I...");
+
+    Wire.beginTransmission(kx_address);
+    Wire.write(0x13); // WHO_AM_I register
+    Wire.endTransmission(false); // repeated start
+    Wire.requestFrom(kx_address, (uint8_t)1);
+
+    if (Wire.available()) {
+        uint8_t whoAmI = Wire.read();
+        usb.print("WHO_AM_I returned 0x");
+        usb.println(whoAmI, HEX);
+
+        if (whoAmI == 0x46) {
+            usb.println("WHO_AM_I matches KX134 (0x46) — device is alive.");
+            kx_detected = true;
+        } else {
+            usb.println("Unexpected WHO_AM_I value! Check wiring or library support.");
         }
-        delay(500);
+    } else {
+        usb.println("No response from device at 0x1F.");
     }
 }
 
-usb.print("KX134 detected at address 0x");
-usb.println(kx_address, HEX);
+// If detected, configure the sensor manually
+if (kx_detected) {
+    // Software reset
+    kxAccel.softwareReset();
+    delay(50);
 
-// Software reset immediately after successful detection
-kxAccel.softwareReset();
-delay(50);
+    // Set accelerometer range
+    kxAccel.setRange(SFE_KX134_RANGE32G);
+    kxAccel.enableAccel();
 
-// Set accelerometer range
-kxAccel.setRange(SFE_KX134_RANGE32G);
-usb.println("KX134 configured.");
+    usb.println("KX134 configured.");
+} else {
+    usb.println("KX134 setup failed.");
+}
 
-// Start accelerometer readings
-kxAccel.enableAccel();
 
   // Get base measurements
   usb.println("Aquiring base Pressure...");
