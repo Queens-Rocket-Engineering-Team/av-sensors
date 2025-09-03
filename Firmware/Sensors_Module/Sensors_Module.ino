@@ -14,14 +14,11 @@
 
 #include <Wire.h>
 #include <SPI.h>
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BME680.h"
-#include <tone.h>
 #include <flashTable.h>
 #include <SerialFlash.h>
 #include <SoftwareSerial.h>
 #include "pinouts.h"
-#include <CANpackets.h>
+#include <CANPackets.h>
 #include "STM32_CAN.h"
 
 //buzzer
@@ -55,9 +52,6 @@ const uint32_t CAM_POWER_TIME = 10800000; //3hrs after record start
 //--- DATALOGGING SETTINGS
 
 FlashTable flash = FlashTable(TABLE_COLS, 16384, TABLE_SIZE, TABLE_NAME, 256); 
-Adafruit_BME680 bme; // I2C
-//Adafruit_BME680 bme(BME_CS); // hardware SPI
-//Adafruit_BME680 bme(BME_CS, BME_MOSI, BME_MISO,  BME_SCK);
 
 //GLOBAL VARIABLES
 STM32_CAN canb( CAN1, ALT );    //CAN1 ALT is PB8+PB9
