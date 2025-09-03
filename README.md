@@ -1,15 +1,14 @@
-# QRET Avionics (2023-2024)
+# QRET Avionics (2023-2025)
 
-This repository is the working space for QRET's 2023-2024 Avionics systems. This includes both hardware design and firmware projects.
+This repository is the working space for QRET's 2023-2025 Avionics systems. This includes both hardware design and firmware projects.
 
 If you're contributing, **make sure you're working in a branch other than Main.**
 
 ## Branch Naming Conventions
 If you create a new branch, make sure its name includes:
-- Your name
-- The topic you're working on
-- Hardware or Firmware
+- The subject you're working on
+- Hardware (HW) or Firmware (FW)
 
-This is to ensure, at a glance, other members know which branches are for what.
+Examples: `Altimeter_HW`, `Sensors_FW`
 
-Examples: `Kennan_Altimeter_HW`, `Altimeter_Hardware_Kennan`, `Kennan_GPS_Module`, `Sensor_Hardware_Kennan`
+Currently we're using KiCAD 8.0.6.
