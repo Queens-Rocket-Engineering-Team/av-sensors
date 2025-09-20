@@ -19,6 +19,7 @@
 #define ALTIMETER_MOD_CANID 0x30
 #define SENSOR_MOD_CANID 0x40
 
+
 // Packet Type IDs (7 LSB of a packet ID)
 #define STATUS_CANID 0x01           // Len=1, status of a module
 #define BATT_A_VOLT_CANID 0x02      // Len=2, primary battery voltage in mV, (uint16_t)
