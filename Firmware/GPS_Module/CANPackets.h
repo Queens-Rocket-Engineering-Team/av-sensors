@@ -12,13 +12,12 @@
  * LSB can be isolated using (ID & 0x07F)
 */
 
-
 // Origin Module IDs (4 MSB of a packet ID)
 #define COMM_MOD_CANID 0x10
 #define GPS_MOD_CANID 0x20
 #define ALTIMETER_MOD_CANID 0x30
 #define SENSOR_MOD_CANID 0x40
-
+#define CAMERA_MOD_CANID 0x50
 
 // Packet Type IDs (7 LSB of a packet ID)
 #define STATUS_CANID 0x01           // Len=1, status of a module
