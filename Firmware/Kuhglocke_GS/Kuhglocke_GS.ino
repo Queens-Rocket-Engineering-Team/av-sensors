@@ -1,9 +1,11 @@
 /*
  * Author: Kennan Bays (Kenneract)
  * Created: Aug.2.2024
- * Updated: Aug.20.2024
+ * Updated: Jun.11.2025
  * Purpose: Testing firmware for the Kuhglocke ground station
  * Hardware: QRET Kuhglocke ground station V1.0 (ESP32-S3-N16R2; 16MiB Flash (QSPI), 2MiB PSRAM (QSPI))
+ * Environment: Arduino IDE 1.8.10, ESP32 Core V2.0.5, ESPtool.py V4.2.1
+ *                                                     NOTE: ESPtool.py only compatible with Arduino IDE 1.x
  * 
  * Suggested Configration:
  * - Board: ESP32S3 Dev Module
@@ -60,7 +62,7 @@
 
 #define EARTH_RADIUS_FEET 20925524.9
 
-const String FIRMWARE_VERSION = "Aug.20.2024, V1.0.2A";
+const String FIRMWARE_VERSION = "Jun.11.2025, V1.1.0C";
 
 // ================================================================================================
 // ================================= \/ GLOBAL CONSTANTS \/ =======================================
@@ -87,7 +89,7 @@ const uint16_t IND_RF_FLASH_TIME = 130; //Duration (ms) of Ping LED flash time
 const uint16_t IND_BATTERY_FLASH_GAP = 750; //How long (ms) between LED flashes when battery is charging
 
 const uint16_t RFM_CONNECTED_TIMEOUT = 2000; //Wait period after a ping to consider radio disconnected
-const uint8_t RFM_PACKET_SIZE = 14; //Expectd num bytes in rocket packet
+const uint8_t RFM_PACKET_SIZE = 20; //Expectd num bytes in rocket packet
 
 const uint32_t LOCAL_GPS_LOG_RATE = 1000;
 
@@ -103,7 +105,7 @@ const uint16_t EPD_UPDATE_INT = 800; //How frequently to update values on EPD (p
 double freqOpts[] = {902.0, 905.4, 928.0};
 uint8_t numFreqOpts = 3;
 double bandwidthOpts[] = {7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500};
-uint8_t numBandwidthOpts = 10;
+uint8_t numBandwidthOpts = 10;    
 int32_t spreadOpts[] = {7, 8, 9, 10, 11, 12};
 uint8_t numSpreadOpts = 6;
 int32_t codingOpts[] = {5, 6, 7, 8};
@@ -112,7 +114,7 @@ int32_t freqCorrectionOpts[] = {10000, 8000, 6000, 4000, 2000, 0, -2000, -4000, 
 uint8_t numFreqCorrectionOpts = 11;
 
 uint8_t freqSelected = 1;
-uint8_t bandwidthSelected = 4;
+uint8_t bandwidthSelected = 6;
 uint8_t spreadSelected = 3;
 uint8_t codingSelected = 1;
 uint8_t freqCorrectionSelected = 5;
@@ -131,16 +133,14 @@ volatile int32_t rocketGPSLon = 0;
 volatile uint8_t rocketGPSSats = 0;
 volatile int32_t rocketAltitude = 0;
 volatile uint8_t rocketStatus = 0;
-
+volatile double rocketVelocity = 0;
+volatile char rocketCallsign[7] = {'-','-','-','-','-','-','\0'};
 
 uint32_t lastLocalGPSLog = 0; //When we last logged local GPS to SD
 
 int32_t curFreqOffset = 0;
 
-
 uint32_t lastEPDUpdate = millis(); // How long its been since a partial EPD update was done
-
-
 
 // (anything used set by Core0 must be volatile)
 // (assignment is mostly atomic operation, so no mutex for simple stuff)
@@ -486,7 +486,7 @@ void rfmInit() {
 
   double baseFreq = freqOpts[freqSelected];
   double freqOffset = (freqCorrectionOpts[freqCorrectionSelected]/1000000.0); //Hz -> MHz
-  freqOffset = (curFreqOffset/1000000.0); //Hz -> MHz
+  freqOffset = (curFreqOffset/1000000.0); //Hz -> MHz (OVERRIDE)
   if (radio.setFrequency(baseFreq+freqOffset) == RADIOLIB_ERR_INVALID_FREQUENCY) {
     Serial.println(F("Frequency is invalid!"));
     while (true);
@@ -541,8 +541,6 @@ void initNAU7802() {
   //TODO: Flush out readings (10x for loop that reads?)
 
 }//initNAU7802()
-
-
 
 
 
@@ -996,6 +994,27 @@ int32_t getDistanceToRocket() {
   
 }//getDistanceToRocket()
 
+void calculateRocketVelocity() {
+    static int32_t previousAltitude = 0;
+    static uint32_t lastTime = 0;
+    
+    if (rfmLastPacketValid && millis() - rfmLastRFReceived < RFM_CONNECTED_TIMEOUT) {
+        uint32_t currentTime = millis();
+        int32_t currentAltitude = rocketAltitude;
+        
+        if (lastTime > 0 && previousAltitude > 0) {
+            // Calculate velocity (ft/s)
+			// TODO: ENSURE BOTH ALTIMETER MODULE & KUHGLOCKE ARE CONSISTENTLY USING ALL METERS.
+			// NOTE: Using meters in code & then adding a quick frontend calculation to change it to feet would be the best setup.
+            float timeDiff = (currentTime - lastTime) / 1000.0; // Convert to seconds
+            float altDiff = currentAltitude - previousAltitude;
+            rocketVelocity = altDiff / timeDiff;
+        }
+        
+        previousAltitude = currentAltitude;
+        lastTime = currentTime;
+    }
+}//calculateRocketVelocity()
 
 /*
  * Handles reading various power sensors,
@@ -1097,13 +1116,17 @@ void updateEPD() {
     //display.setCursor(x, y + 16*2);
     display.print("ALT:");
     //display.print(gps.altitude.feet(), 0);
-    display.print(rocketAltitude, 0);
+    display.print(rocketAltitude * 3.28084f, 0);
     display.println("ft");
 
     //display.setCursor(x, y + 16*3);
     display.print("AGE:");
     display.print((millis()-rfmLastRFReceived)/1000.0, 1);
     display.println("s");
+
+    display.print("VEL:");
+    display.print(rocketVelocity * 3.28084f, 1);
+    display.print("ft/s");
 
     display.setCursor(x+160, y + 16*3);
     //display.print("D=");
@@ -1216,17 +1239,27 @@ void onRFMReceive() {
 
   // Process packet data
   rfmLastPacketValid = true;
-  rocketGPSLat = (rfmPayload[3]<<24) + (rfmPayload[2]<<16) + (rfmPayload[1]<<8) + rfmPayload[0];
-  rocketGPSLon = (rfmPayload[7]<<24) + (rfmPayload[6]<<16) + (rfmPayload[5]<<8) + rfmPayload[4];
-  rocketGPSSats = rfmPayload[8];
-  rocketAltitude = (rfmPayload[12]<<24) + (rfmPayload[11]<<16) + (rfmPayload[10]<<8) + rfmPayload[9];
-  rocketStatus = rfmPayload[13];
+
+  rocketCallsign[0] = rfmPayload[0];
+  rocketCallsign[1] = rfmPayload[1];
+  rocketCallsign[2] = rfmPayload[2];
+  rocketCallsign[3] = rfmPayload[3];
+  rocketCallsign[4] = rfmPayload[4];
+  rocketCallsign[5] = rfmPayload[5];
+  
+  rocketGPSLat = (rfmPayload[9]<<24) + (rfmPayload[8]<<16) + (rfmPayload[7]<<8) + rfmPayload[6];
+  rocketGPSLon = (rfmPayload[13]<<24) + (rfmPayload[12]<<16) + (rfmPayload[11]<<8) + rfmPayload[10];
+  rocketGPSSats = rfmPayload[14];
+  rocketAltitude = (rfmPayload[18]<<24) + (rfmPayload[17]<<16) + (rfmPayload[16]<<8) + rfmPayload[15];
+  rocketStatus = rfmPayload[19];
 
   // Record stats
   rfmLastRFReceived = millis();
   rfmLastRSSI = radio.getRSSI();
   rfmLastSNR = radio.getSNR();
   rfmLastFreqErr = radio.getFrequencyError();
+
+  calculateRocketVelocity();
 
   // Log to SD card
   String resp = String("RocketPacket: ");
@@ -1243,7 +1276,9 @@ void onRFMReceive() {
   resp2 += "," + String(rocketGPSLat/1000000.0, 6);
   resp2 += "," + String(rocketGPSLon/1000000.0, 6);
   resp2 += "," + String(rocketAltitude);
+  resp2 += "," + String(rocketVelocity);
   resp2 += "," + String(rocketStatus, BIN);
+  
   writeToSDLog(resp2);
  
 }//onRFMReceive()

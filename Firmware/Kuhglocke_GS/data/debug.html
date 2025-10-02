@@ -169,6 +169,45 @@
 		
     </div>
 	
+
+	<div class="island">
+		<h2>Radio Configuration</h2>
+		<p>Press the below buttons to request changed values. You MUST press the "apply radio settings" button after making any changes to actually have them comitted!!</p>
+		<p></p>	
+		<button onclick="freqOffsetUp()">FREQ OFFSET + 1000Hz</button>
+		<button onclick="freqOffsetDown()">FREQ OFFSET - 1000Hz</button>
+		<p></p>
+		<p></p>
+		<button onclick="setBandwidth(0)">BW: 7.8KHz</button>
+		<button onclick="setBandwidth(1)">BW: 10.4KHz</button>
+		<button onclick="setBandwidth(2)">BW: 15.6KHz</button>
+		<button onclick="setBandwidth(3)">BW: 20.8KHz</button>
+		<button onclick="setBandwidth(4)">BW: 31.25KHz</button>
+		<button onclick="setBandwidth(5)">BW: 41.7KHz</button>
+		<button onclick="setBandwidth(6)">BW: 62.5KHz</button>
+		<button onclick="setBandwidth(7)">BW: 125KHz</button>
+		<button onclick="setBandwidth(8)">BW: 250KHz</button>
+		<button onclick="setBandwidth(9)">BW: 500KHz</button>
+		<p></p>
+		<p></p>
+		<button onclick="setSpreadingFactor(0)">SF: 7</button>
+		<button onclick="setSpreadingFactor(1)">SF: 8</button>
+		<button onclick="setSpreadingFactor(2)">SF: 9</button>
+		<button onclick="setSpreadingFactor(3)">SF: 10</button>
+		<button onclick="setSpreadingFactor(4)">SF: 11</button>
+		<button onclick="setSpreadingFactor(5)">SF: 12</button>
+		<p></p>
+		<p></p>
+		<button onclick="setCodingRate(0)">CR: 5</button>
+		<button onclick="setCodingRate(1)">CR: 6</button>
+		<button onclick="setCodingRate(2)">CR: 7</button>
+		<button onclick="setCodingRate(3)">CR: 8</button>
+		<p></p>
+		<p></p>
+		<button onclick="radioReload()">APPLY RADIO SETTINGS</button>
+	</div>
+
+
     <div class="island">
 		<h2>Rocket Packet Data</h2>
 
@@ -187,6 +226,12 @@
 		<p class="inlineTitle">Status:</p>
 		<p class="inlineValue" id="rocketStatus">?</p>
 		<p></p>
+		<p class="inlineTitle">Callsign:</p>
+		<p class="inlineValue" id="rocketCallsign">?</p>
+		<p></p>
+		<p class="inlineTitle">Vertical Velocity:</p>
+		<p class="inlineValue" id="rocketVelocity">?</p>
+		<p></p>
 		<hr>
 		<p class="inlineTitle">Time Since Ping:</p>
 		<p class="inlineValue" id="lastPingTime">?</p>
@@ -203,15 +248,7 @@
 		<p class="inlineTitle">Last Data Packet:</p>
 		<p class="inlineValue" id="lastPacketData">?</p>
 		<p></p>
-		
-    </div>
-		<button onclick="freqOffsetUp()">FREQ OFFSET + 1000Hz</button>
-		<button onclick="freqOffsetDown()">FREQ OFFSET - 1000Hz</button>
-		<button onclick="radioReload()">APPLY RADIO SETTINGS</button>
-	<div>
-	
-	
-	
+
 	</div>
 	
 
@@ -279,11 +316,14 @@
 			rocketLongitude = (Number(chunks[35])).toFixed(6);
 			rocketAltitude = ((Number(chunks[36]))*3.281).toFixed(2);
 			rocketStatus = chunks[37];
+			rocketCallsign = chunks[38];
 			
-			curFreqOffset = chunks[38];
+			curFreqOffset = chunks[39];
 			
-			core0FreeStack = ((Number(chunks[39]))/1024).toFixed(2);
-			core0LoopTime = Number(chunks[40]);
+			core0FreeStack = ((Number(chunks[40]))/1024).toFixed(2);
+			core0LoopTime = Number(chunks[41]);
+			
+			rocketVelocity = Number(chunks[42]).toFixed(2);
 			
 
 			//Display
@@ -311,7 +351,7 @@
 			document.getElementById(`gpsSatellites`).innerHTML = `${gpsSatellites}`;
 			document.getElementById(`latitude`).innerHTML = `${gpsLat}`;
 			document.getElementById(`longitude`).innerHTML = `${gpsLon}`;
-			document.getElementById(`altitude`).innerHTML = `${gpsAlt}ft`;
+			document.getElementById(`altitude`).innerHTML = `${gpsAlt}m`;
 			document.getElementById(`gpsTimestamp`).innerHTML = `${gpsTime}`;
 
 			document.getElementById(`rfmFrequency`).innerHTML = `${rfmFrequency}MHz`;
@@ -328,13 +368,16 @@
 			document.getElementById(`rocketSatellites`).innerHTML = `${rocketSatellites}`;
 			document.getElementById(`rocketLatitude`).innerHTML = `${rocketLatitude}`;
 			document.getElementById(`rocketLongitude`).innerHTML = `${rocketLongitude}`;
-			document.getElementById(`rocketAltitude`).innerHTML = `${rocketAltitude}ft`;
+			document.getElementById(`rocketAltitude`).innerHTML = `${rocketAltitude}m`;
 			document.getElementById(`rocketStatus`).innerHTML = `${rocketStatus}`;
+			document.getElementById(`rocketCallsign`).innerHTML = `${rocketCallsign}`;
 			
 			document.getElementById(`rfmFreqCorrection`).innerHTML = `${curFreqOffset}Hz`;
 			
 			document.getElementById(`core0FreeStack`).innerHTML = `${core0FreeStack}KiB`;
 			document.getElementById(`core0LoopTime`).innerHTML = `${core0LoopTime}ms`;
+			
+			document.getElementById(`rocketVelocity`).innerHTML = `${rocketVelocity}m/s`;
 			
 		}; 
 		
@@ -380,7 +423,58 @@
 		request.timeout = 1000;
 		request.send();
 	}//freqOffsetDown()
-	
+
+
+	function setBandwidth(index) {
+		//new AJAX request to the server
+		const request = new XMLHttpRequest();
+		request.open("GET", `/RadioConfig?bandwidth=${index}`);
+
+		 //when response received
+		request.onload = () => {
+			//get the response text
+			const response = request.responseText;
+		}; 
+		
+		//Send the request
+		request.timeout = 1000;
+		request.send();
+	}//setBandwidth()
+
+
+	function setSpreadingFactor(index) {
+		//new AJAX request to the server
+		const request = new XMLHttpRequest();
+		request.open("GET", `/RadioConfig?spreadingfactor=${index}`);
+
+		 //when response received
+		request.onload = () => {
+			//get the response text
+			const response = request.responseText;
+		}; 
+		
+		//Send the request
+		request.timeout = 1000;
+		request.send();
+	}//setSpreadingFactor()
+
+
+	function setCodingRate(index) {
+		//new AJAX request to the server
+		const request = new XMLHttpRequest();
+		request.open("GET", `/RadioConfig?codingrate=${index}`);
+
+		 //when response received
+		request.onload = () => {
+			//get the response text
+			const response = request.responseText;
+		}; 
+		
+		//Send the request
+		request.timeout = 1000;
+		request.send();
+	}//setCodingRate()
+
 
 	function radioReload() {
 		//new AJAX request to the server
