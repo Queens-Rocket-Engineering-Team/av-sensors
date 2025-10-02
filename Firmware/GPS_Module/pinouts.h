@@ -2,7 +2,7 @@
 
 #define RGB_DATA_PIN PB3
 #define GPS_RESET_PIN PB4
-#define PS_EXTINT_PIN PB5
+#define GPS_EXTINT_PIN PB5
 #define GPS_SCL_PIN PB6
 #define GPS_SDA_PIN PB7
 #define CAN_RX_PIN PB8
