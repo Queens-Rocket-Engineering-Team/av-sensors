@@ -1,47 +1,37 @@
 /*
 QRET SRAD Avionics module - AIM
-Altimeter Module Firmware
-    V 1.0
+Authors: Brent Naumann, Tristan Alderson, Kennan Bays, Caelan Donovan, Ethan Toste
+Env: Arduino 1.8.10, STM32duino 2.7.1
+Updated: Aug.17.2025
+Purpose: QRET SRAD Avionics module - AIM Altimeter Module Firmware V 2.0 (STINGER)
 
 Sensors used:
- - ms5607 : Pressure and Temperature
+ - ms5611 : Pressure and Temperature
  - mpu6050 : Gyroscope
- - qma6100P : accelerometer
-
-Written by:
-    Brent Naumann
-    Tristan Alderson
-    Kennan Bays
-Flash capability proveded by: 
-    Kennan Bays
-
+ - kx134 : accelerometer 
 */
+
 //Libraries to include
 #include <Wire.h>
-#include <SoftwareSerial.h>
 #include <SimpleKalmanFilter.h>
-#include <MS5xxx.h>
 #include <Adafruit_MPU6050.h>
-#include <QMA6100P.h>
+#include <SparkFun_KX13X.h> 
 #include <SerialFlash.h>
 #include <SPI.h>
 #include "flashTable.h"
 #include <tone.h>
 #include <CANpackets.h>
-#include "STM32_CAN.h"
+#include "STM32_CAN.h" //IMPORTANT: DO NOT DOWNLOAD THE LATEST VERSION (DOWNLOAD 1.1.2)
 #include "pinouts.h"
+#include <HardwareSerial.h>
+#include "MS5611.h" // https://github.com/RobTillaart/MS5611
 
 
-// TODO: RE-WORK BUZZER FOR ALL MODULES
 #define BUZZER_TONE 1000
 #define BUZZER_TONE_Q 500
+const uint32_t BEEP_FREQ = 1000;
 
-
-//--- Pin Definitions
-#define USB_TX_PIN USB_DP_PIN // D+ pin
-#define USB_RX_PIN USB_DM_PIN // D- pin
-
-#define SERIAL_BAUD_RATE 38400
+#define SERIAL_BAUD_RATE 115200
 //#define SERIAL_BAUD_RATE 9600
 
 //--- FILTER SETTINGS
@@ -66,7 +56,7 @@ const uint32_t TABLE_SIZE = 16646144;
 #define CANBUS_DATAINT 500 //[ms] interval bewteen each CANBUS message send.
 
 //--- PREFLIGHT SETTINGS
-#define PRE_DATAINT 50  //[ms] interval bewteen each log to FLASH.
+#define PRE_DATAINT 35  //[ms] interval bewteen each log to FLASH.
 
 //--- LAUNCH SETTINGS
 #define LAUNCH_THRESHOLD  25  // [m/s]-mpu ; [g]-qma. Acceleration threshold to declare launch
@@ -77,24 +67,25 @@ const uint32_t TABLE_SIZE = 16646144;
 #define APO_GRACE   500 // [ms] Time for measurements to be above threshold before Apogee is declared
 
 //--- DESCENT SETTINGS
-#define DEC_DATAINT 20 //  [ms] interval bewteen each log to FLASH.
-#define LAND_THRESHOLD -0.3//[m/s] Velocity Threshold to declare land
+#define DROGUE_DATAINT 20 //  [ms] interval between each log to FLASH.
+#define MAIN_DATAINTFAST 500 // [ms] interval between each log to FLASH - slowed rate before 5000 ms
+#define MAIN_DATAINTSLOW 1000 // [ms] interval between each log to FLASH - slowed rate after 5000 ms
+#define LAND_THRESHOLD -0.5//[m/s] Velocity Threshold to declare land
 #define LAND_GRACE  2000 // [ms] Time for measurements to be above threshold before Landing is declared
 const uint16_t MAIN_DEPLOY_THRESHOLD = 1500/3.281;
 
 //--- LAND SETTINGS
-#define LAND_DATAINT 100  //[ms] interval bewteen each log to FLASH.
-
-
+#define LAND_DATAINT 1000  //[ms] interval between each log to FLASH.
+#define LAND_SLOW_DATAINT 2000 //[ms] interval between each log to FLASH.
 
 // Global objects to declare
-SoftwareSerial softSerial(USB_RX_PIN, USB_TX_PIN); 
-//#define softSerial Serial              //For debugging when not using CANBUS
+HardwareSerial usb(USB_RX_PIN, USB_TX_PIN);
+//#define usb Serial              //For debugging when not using CANBUS
 
 SimpleKalmanFilter kalmanFilter(M_UNCERT,EST_UNCERT,NOISE_SENS); 
-MS5xxx ms5607(&Wire);
+MS5611 ms5611(MS5611_ADDR, &Wire);
 Adafruit_MPU6050 mpu6050;
-QMA6100P qma6100;
+SparkFun_KX134 kxAccel;
 
 FlashTable flash = FlashTable(TABLE_COLS, 16384, TABLE_SIZE, TABLE_NAME, 256);
 
@@ -104,7 +95,7 @@ static CAN_message_t CAN_TX_msg ;
 //--- Global Variables
 //sensors
 
-outputData qmaData;          //For qma 6100
+outputData kxData;          //For kx134
 sensors_event_t a, g, temp;  // for mpu6050
 
 float Po;
@@ -137,6 +128,10 @@ unsigned long prevTime;
 unsigned long lastLog; // Time of last data log
 unsigned long lastSend; // Time of last CANBUS send
 
+//extra timers
+int mainTimer = 0;
+int landingTimer =0;
+
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 //      SETUP
@@ -146,10 +141,12 @@ unsigned long lastSend; // Time of last CANBUS send
 void setup(){
 
   // Configure pinmodes
-  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUZZER_A_PIN, OUTPUT);
+  pinMode(BUZZER_B_PIN, OUTPUT);
   pinMode(STATUS_LED_PIN, OUTPUT);
   pinMode(FIRE_MAIN_PIN,OUTPUT);
   pinMode(FIRE_DROGUE_PIN,OUTPUT);
+  
 
   // Configure SPI
   SPI.setSCLK(PB13);
@@ -166,121 +163,167 @@ void setup(){
   canb.setBaudRate(500000); //500kbps
 
   //Start Serial
-  softSerial.begin(SERIAL_BAUD_RATE);
+  usb.begin(SERIAL_BAUD_RATE);
+  delay(1000);
+
+  usb.print("BUZZER REACHED");      
+
+  initBuzzer();
+  setBuzzerFreq(BEEP_FREQ);
+
+  // // STARTUP BEEP
+  startBuzzer();
+  delay(1000);
+  stopBuzzer();
     
   digitalWrite(STATUS_LED_PIN,LOW);
 
-//    for (int i=0 ; i<5 ; i++){
-//      digitalWrite(STATUS_LED_PIN,HIGH);
-//      delay(250);
-//      digitalWrite(STATUS_LED_PIN,LOW);
-//      delay(750);
-//    }
-
-  softSerial.println("Connecting to required devices...");
+  usb.println("Connecting to required devices...");
             
   /*------------------*\
   |    FLASH SETUP    |
   \*------------------*/
-  softSerial.print("SEARCHING: SPI Flash chip");
+  usb.print("SEARCHING: SPI Flash chip");
   while (!SerialFlash.begin(FLASH_CS_PIN)) {
     delay(250);
-    //toggleStatusLED();
   }//while
-  softSerial.println("  - CONNECTED");
+  usb.println("  - CONNECTED");
   
+  while (SerialFlash.ready() == false) {}  
+
   // Initialize FlashTable object
+  flash.init(&SerialFlash, &usb);
+
+  // Note done loading
   for (int i=0; i<3; i++) {
-  tone(BUZZER_PIN, BUZZER_TONE_Q);
-  delay(100);
-  noTone(BUZZER_PIN);
-  delay(100);
+    startBuzzer();
+    delay(100);
+    stopBuzzer();
+    delay(100);
   }
-  flash.init(&SerialFlash, &softSerial);
-  
+
+
   /*------------------*\
-  |    MS5607 SETUP    |
+  |    MS5611 SETUP    |
   \*------------------*/
-  softSerial.print("SEARCHING: MS5607");      
-  ms5607.connect(); 
-  
-  while(ms5607.connect()>0) {  //Wait for ms5607 to connect
-    delay(10);   
-  }//while
-  softSerial.println("  - CONNECTED");      //ms5607 connected
-  ms5607.ReadProm();                    //Read the calibration coefficients
-  ms5607.setOversampling(0x0);
+  usb.print("SEARCHING: MS5611");      
+  while (!ms5611.begin()) {
+    delay(10);
+  }
+  usb.println("  - CONNECTED"); //MS5611 connected
+
+  // Set oversampling
+  ms5611.setOversampling(OSR_ULTRA_LOW);
 
   /*-------------------*\
   |    MPU6050 SETUP    |
   \*-------------------*/  
-    softSerial.print("SEARCHING: MPU6050");
+    usb.print("SEARCHING: MPU6050");
 
     while(!mpu6050.begin(MPU6050_ADDR)) {
       delay(10);
     }//while()
-    softSerial.println("  - CONNECTED");    //ms6050 connected
+    usb.println("  - CONNECTED");    //ms6050 connected
 
     mpu6050.setAccelerometerRange(MPU6050_RANGE_16_G); 
     mpu6050.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu6050.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
-  /*--------------------*\
-  |    QMA6100P SETUP    |
-  \*--------------------*/
-  float qmaOffsetX = -1.495;
-  float qmaOffsetY = -0.485;
-  float qmaOffsetZ = 0.825;
+/*--------------------*\
+|    KX134 SETUP       |
+\*--------------------*/
 
-  softSerial.print("SEARCHING: QMA6100P");
-  
-  while(!qma6100.begin()) {       //Wait for qma6100P to connect
-      delay(10);  
-  }
-  softSerial.println("  - CONNECTED");    //qma6100P connected
-  
-  qma6100.softwareReset();
-  qma6100.setRange(SFE_QMA6100P_RANGE32G);
-  qma6100.setOffset(qmaOffsetX,qmaOffsetY,qmaOffsetZ);
+usb.print("SEARCHING: KX134");
 
-  // STARTUP BEEP
-  tone(BUZZER_PIN, BUZZER_TONE);
-  delay(1000);
-  noTone(BUZZER_PIN);
+// Optional: slow down I2C for reliability
+Wire.setClock(100000);
+
+bool kx_detected = false;
+byte kx_address = 0x1F;   // Default address for KX134
+
+// Try initializing with SparkFun lib
+if (kxAccel.begin(Wire, kx_address)) {
+    kx_detected = true;
+    usb.print("KX134 connected at 0x");
+    usb.println(kx_address, HEX);
+} else {
+    // If init fails, read WHO_AM_I directly
+    usb.println("KX134 begin() failed, checking WHO_AM_I...");
+
+    Wire.beginTransmission(kx_address);
+    Wire.write(0x13); // WHO_AM_I register
+    Wire.endTransmission(false); // repeated start
+    Wire.requestFrom(kx_address, (uint8_t)1);
+
+    if (Wire.available()) {
+        uint8_t whoAmI = Wire.read();
+        usb.print("WHO_AM_I returned 0x");
+        usb.println(whoAmI, HEX);
+
+        if (whoAmI == 0x46) {
+            usb.println("WHO_AM_I matches KX134 (0x46) — device is alive.");
+            kx_detected = true;
+        } else {
+            usb.println("Unexpected WHO_AM_I value! Check wiring or library support.");
+        }
+    } else {
+        usb.println("No response from device at 0x1F.");
+    }
+}
+
+// If detected, configure the sensor manually
+if (kx_detected) {
+    // Software reset
+    kxAccel.softwareReset();
+    delay(50);
+
+    // Set accelerometer range
+    kxAccel.setRange(SFE_KX134_RANGE32G);
+    kxAccel.enableAccel();
+
+    usb.println("KX134 configured.");
+} else {
+    usb.println("KX134 setup failed.");
+}
+
 
   // Get base measurements
-  softSerial.println("Aquiring base Pressure...");
+  usb.println("Aquiring base Pressure...");
   Po = altimeterBasePres(500);
-  softSerial.print("Base Pressure: ");
-  softSerial.println(Po);
+  usb.print("Base Pressure: ");
+  usb.println(Po);
   
-  softSerial.println("Aquiring base Temperature...");
+  usb.println("Aquiring base Temperature...");
   To = altimeterBaseTemp(500);
-  softSerial.print("Base Temperature: ");
-  softSerial.println(To);   
+  usb.print("Base Temperature: ");
+  usb.println(To);   
   
-  softSerial.println("");
-  softSerial.println("All sensors set up and configured.");
-  softSerial.println("");
+  usb.println("");
+  usb.println("All sensors set up and configured.");
+  usb.println("");
 
   // Startup delay - Check to enter debug mode
-  softSerial.println("[MDE] SEND SERIAL TO ENTER DEBUG");
+  usb.println("[MDE] SEND SERIAL TO ENTER DEBUG");
   uint32_t startTime = millis();
-  while (!softSerial.available() and millis()-startTime < 4000) {}
+  while (!usb.available() and millis()-startTime < 4000) {}
   
-  if (softSerial.available()) {
-    byte d = softSerial.read();
+  if (usb.available()) {
+    byte d = usb.read();
     emptySerialBuffer();
-    softSerial.println("[MDE] Entered Debug Mode");
+    usb.println("[MDE] Entered Debug Mode");
     debugMode();
     while (true) {}
   }//if
 
-  softSerial.println("Beginning PreFlight...");
+  usb.println("Beginning PreFlight...");
 
-  qma6100.enableAccel();  //Start accelerometer reading
+  kxAccel.enableAccel();  //Start accelerometer reading
 
   digitalWrite(STATUS_LED_PIN, HIGH);
+
+  prev_alt = altitudeFind(ms5611.getPressurePascal(), Po, To);
+  prevTime = millis();
+  vel = 0;   // reset filter
 
 }//setup()
 
@@ -291,33 +334,45 @@ void setup(){
 // ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 void loop(){
+
   /*---------|----------*\
       |SENSOR READING|    
   \*---------|----------*/
   
   //read pressure/temp
-  ms5607.Readout();     //Read the data from the ms5607, which gets stored in the ms5xxx object
-  
-  float P = ms5607.GetPres();              //Get variables for pressure and temperature
-  float T = ms5607.GetTemp()/100 + 273;
+  ms5611.read();     //Read the data from the ms5611, which gets stored in object
+
+  //Get variables for pressure and temperature
+  float P = ms5611.getPressurePascal();  // Pascals
+  float T = ms5611.getTemperature(); // Celcius
 
   //Kalman Filtering on pressure
   float P_filter = kalmanFilter.updateEstimate(P);
 
   //Find Altitude from filtered Pressure
-  float alt = altitudeFind(P_filter,Po,To);
+  // float alt = altitudeFind(P_filter,Po,To);
+
+  // TODO: FIX IN THE FUTURE
+  // Override the inaccurate altitude system using raw pressure reading (im assuming its in pascals)
+  float alt = (288.15d/0.0065d) * (1-pow(P_filter/101325.0f, 0.190284f));
 
   //read gyro
   mpu6050.getEvent(&a, &g, &temp);
 
   //read accelerometer
-  qma6100.getAccelData(&qmaData);
-  qma6100.offsetValues(qmaData.xData, qmaData.yData, qmaData.zData);
+  kxAccel.getAccelData(&kxData);
+  // kxAccel.offsetValues(kxData.xData, kxData.yData, kxData.zData);
 
   //--- CANBUS DATA SENDING
   if (millis() - lastSend >= CANBUS_DATAINT){
     //send Temperature, altitude, and Flight stage
     //sendCANtemp(T);
+    usb.print("Pres(Pa): ");
+    usb.print(P_filter, 2);
+    usb.print(", Temp(C): ");
+    usb.print(T);
+    usb.print(", Alt(m): ");
+    usb.println(alt);
     sendCANaltitude(alt);
     sendCANstage(STATE);
     lastSend = millis();
@@ -331,7 +386,7 @@ void loop(){
     case 0:   //Pre-Flight Stage  
       // Data logging
       if( millis() - lastLog >= PRE_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+        logDataToFlash(P,P_filter,T,&a,&g,&kxData);
         lastLog = millis();
       }//if
       //Perform Launch Checks
@@ -344,7 +399,7 @@ void loop(){
     case 1:   //Ascending
       //logging data 
       if( millis() - lastLog >= ASC_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+        logDataToFlash(P,P_filter,T,&a,&g,&kxData);
         lastLog = millis();
       }//if
        
@@ -352,7 +407,7 @@ void loop(){
       if(detectApogee(alt)){
         STATE = 3;
         digitalWrite(FIRE_DROGUE_PIN,HIGH);
-        softSerial.println(F("FIRING DROGUE"));
+        usb.println(F("FIRING DROGUE"));
       }//if
       
       //updating prevs
@@ -362,30 +417,40 @@ void loop(){
 
     case 3:   //Descending with drogue
       //logging data
-      if( millis() - lastLog >= DEC_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
+      if( millis() - lastLog >= DROGUE_DATAINT){
+        logDataToFlash(P,P_filter,T,&a,&g,&kxData);
         lastLog = millis();
       }//if
 
       //fire main parachute if necessary
       if(alt<= MAIN_DEPLOY_THRESHOLD){
         digitalWrite(FIRE_MAIN_PIN, HIGH);
-        softSerial.println(F("FIRING MAIN"));
+        usb.println(F("FIRING MAIN"));
         STATE = 4;
+        mainTimer = millis();
       }//if
       break;
       
     case 4:   //descending with main
       //logging data
-      if( millis() - lastLog >= DEC_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
-        lastLog = millis();
+      if(millis() - mainTimer <= 5000){
+        if(millis() - lastLog >= MAIN_DATAINTFAST){
+          logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+          lastLog = millis();
+        }//if
+      }//if
+      else if(millis() - mainTimer > 5000){
+        if(millis() - lastLog >= MAIN_DATAINTSLOW){
+          logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+          lastLog = millis();
+        }//if
       }//if
       
       //perform Landing check
       if(detectLand(alt)){
+        landingTimer = millis();
         STATE = 5;
-        softSerial.println("LANDED");
+        usb.println("LANDED");
       }//if
       //updating prevs
       prevTime = curTime;
@@ -394,10 +459,25 @@ void loop(){
       
     case 5:   // Landed
       //logging data
-      if( millis() - lastLog >= LAND_DATAINT){
-        logDataToFlash(P,P_filter,T,&a,&g,&qmaData);
-        lastLog = millis();
-      }//if
+      if (millis() - landingTimer <= 1800000){
+        if( millis() - lastLog >= LAND_DATAINT){
+          logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+          lastLog = millis();
+
+        }//if
+      }
+      //slower logging rate after 30 mins to save power
+      else if (millis() - landingTimer > 1800000 && millis() - landingTimer < 3600000){
+        if( millis() - lastLog >= LAND_SLOW_DATAINT){
+          logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+          lastLog = millis();
+
+        }//if
+      }
+      //power save mode after 60 mins
+      else if (millis() - landingTimer > 36000000){
+        
+      }
       break;
 
   }//switch
@@ -407,8 +487,7 @@ void loop(){
      |  DATA LOGGING |    
 \*---/\---/\---/\---/\---*/
 
-void logDataToFlash( float pressure,float pressure_filter,float temp,sensors_event_t *a,
-                    sensors_event_t *g,outputData *qmaData){
+void logDataToFlash( float pressure, float pressure_filter, float temp,sensors_event_t *a, sensors_event_t *g, outputData *kxData){
   uint32_t dataArr[11] = {0,0,0,0,0,0,0,0,0,0,0};
 
   dataArr[0] = millis();
@@ -418,21 +497,28 @@ void logDataToFlash( float pressure,float pressure_filter,float temp,sensors_eve
   // dataArr[4] = static_cast<uint32_t>(a->acceleration.x*1e6);
   // dataArr[5] = static_cast<uint32_t>(a->acceleration.y*1e6);
   dataArr[3] = flash.unsignify(a->acceleration.z*10000);
-
-  dataArr[4] = flash.unsignify(qmaData->xData*10000);
-  dataArr[5] = flash.unsignify(qmaData->yData*10000);
-  dataArr[6] = flash.unsignify(qmaData->zData*10000);
   
+  dataArr[4] = flash.unsignify(kxData->xData*10000);
+  dataArr[5] = flash.unsignify(kxData->yData*10000);
+  dataArr[6] = flash.unsignify(kxData->zData*10000);
+
   //gyro data
   dataArr[7] = flash.unsignify(g->gyro.x*10000);
   dataArr[8] = flash.unsignify(g->gyro.y*10000);
   dataArr[9] = flash.unsignify(g->gyro.z*10000);
 
+  // dataArr[7] = flash.unsignify(altitudeFind(pressure_filter, altimeterBasePres(500),altimeterBaseTemp(500)));
+
   //state
   dataArr[10] = STATE;
 
   //write to FLASH
-  flash.writeRow(dataArr);
+  bool success = flash.writeRow(dataArr);
+  if (success) {
+    //usb.println("[MDE] Data logged successfully");
+  } else {
+      usb.println("[MDE] Flash write failed!");
+  }
 
 }//logDataToFlash()
 
@@ -493,7 +579,7 @@ bool detectLand(float alt) {
   
   vel = 0.9*vel + 0.1*dh;
   
-  if (vel > LAND_THRESHOLD && vel <= LAND_THRESHOLD) {  //check if velocity is less than -0.5 [m/s]
+  if (vel <= LAND_THRESHOLD) {  //check if velocity is less than -0.5 [m/s]
     
     if (!potentialLand) {
       //if first measurement, begin Land countdown
@@ -524,7 +610,7 @@ bool detectLand(float alt) {
  * Used by Debug mode
  */
 void emptySerialBuffer() {
-  while (softSerial.available()) {softSerial.read();}
+  while (usb.available()) {usb.read();}
 }//emptySerialBuffer()
 
 /*
@@ -544,67 +630,76 @@ void debugMode() {
     emptySerialBuffer();
 
     // Wait for command
-    while (!softSerial.available()) {}
-    uint8_t cmd = softSerial.read();
+    while (!usb.available()) {}
+    uint8_t cmd = usb.read();
 
     if (cmd == 'I') {
       // "Identify" command; return board name
-      softSerial.println(F("[MDE] OKA_ALT"));
+      usb.println(F("[MDE] STINGER_ALT"));
     }//if
     if (cmd == 'F') {
       // "FlashInfo" command; return flash usage stats
-      softSerial.print(F("[MDE] "));
-      softSerial.print(flash.getMaxSize());
-      softSerial.print(F(","));
-      softSerial.println(flash.getCurSize());   
+      usb.print(F("[MDE] "));
+      usb.print(flash.getMaxSize());
+      usb.print(F(","));
+      usb.println(flash.getCurSize());   
     }//if
     if (cmd == 'D') {
       // "DumpFlash" command; dump all flash contents via serial
-      flash.beginDataDump(&softSerial);
+      flash.beginDataDump(&usb);
     }//if
+    if (cmd == 'L') {
+      // LOG DATA
+      //Get variables for pressure and temperature
+      float P = ms5611.getPressurePascal(); //pascals
+      float T = ms5611.getTemperature(); //celcius
+      float P_filter = kalmanFilter.updateEstimate(P);
+      mpu6050.getEvent(&a, &g, &temp);
+      logDataToFlash(P,P_filter,T,&a,&g,&kxData);
+    }  
     if (cmd == 'E') {
       // "EraseFlash" command; completely erase contents of flash.
       // Should be restarted afterwards
-      softSerial.println(F("[MDE] Erasing Flash"));
+      usb.println(F("[MDE] Erasing Flash"));
       SerialFlash.eraseAll();
       while (SerialFlash.ready() == false) {}
       //flash.init(&SerialFlash);
-      softSerial.println(F("[MDE] Complete"));
+      usb.println(F("[MDE] Complete"));
     }//if
     if (cmd == 'Q') {
         // QUERY SENSORS
-        qma6100.enableAccel();
+        // kxAccel.enableAccel();
           //Read pressure/temperature
-        ms5607.Readout();
-        softSerial.println("[MDE] --MS5607--");
-        softSerial.print(F("[MDE] Temperature (0.01C): "));
-        softSerial.println(ms5607.GetTemp()/100 + 273);
-        softSerial.print(F("[MDE] Pressure (Pa): "));
-        softSerial.println(ms5607.GetPres());
+        ms5611.read();
+        usb.println("[MDE] --MS5611--");
+        usb.print(F("[MDE] Temperature (1.00C): "));
+        usb.println(ms5611.getTemperature());
+        usb.print(F("[MDE] Pressure (Pa): "));
+        usb.println(ms5611.getPressurePascal());
 
         //read gyro
       sensors_event_t a, g, temp;
       mpu6050.getEvent(&a, &g, &temp);
-      softSerial.println("[MDE] --MPU6050--");
-      softSerial.print("[MDE] X Rotation (rad/s): ");
-      softSerial.println(g.gyro.x);
-      softSerial.print("[MDE] Y Rotation (rad/s): ");
-      softSerial.println(g.gyro.y);
-      softSerial.print("[MDE] Z Rotation (rad/s): ");
-      softSerial.println(g.gyro.z);
+      usb.println("[MDE] --MPU6050--");
+      usb.print("[MDE] X Rotation (rad/s): ");
+      usb.println(g.gyro.x);
+      usb.print("[MDE] Y Rotation (rad/s): ");
+      usb.println(g.gyro.y);
+      usb.print("[MDE] Z Rotation (rad/s): ");
+      usb.println(g.gyro.z);
       
         //read accelerometer
-      outputData qmaData;
-      qma6100.getAccelData(&qmaData);
-      qma6100.offsetValues(qmaData.xData, qmaData.yData, qmaData.zData);
+      // outputData kxData;
+      //kxAccel.getAccelData(&kxData);
+      //kxAccel.offsetValues(kxData.xData, kxData.yData, kxData.zData);
 
-      softSerial.println("[MDE] --QMA6100--");
-      softSerial.print("[MDE] X Acceleration (g): ");
-      softSerial.println(qmaData.xData);
-      softSerial.print("[MDE] Y Acceleration (g): ");
-      softSerial.println(qmaData.yData);
-      softSerial.print("[MDE] Z Acceleration (g): ");
-      softSerial.println(qmaData.zData);   
+      // usb.println("[MDE] --kxAccel--");
+      // usb.print("[MDE] X Acceleration (g): ");
+      // usb.println(kxData.xData);
+      // usb.print("[MDE] Y Acceleration (g): ");
+      // usb.println(kxData.yData);
+      // usb.print("[MDE] Z Acceleration (g): ");
+      // usb.println(kxData.zData);   
     }//if
 
   }//while
@@ -637,8 +732,8 @@ float altimeterBaseTemp(int sample){
   float sum = 0;
 
   for (int i=0 ; i<sample ; i++){
-    ms5607.Readout();
-    float Ti = ms5607.GetTemp()/100 + 273;
+    ms5611.read();
+    float Ti = ms5611.getTemperature(); //celcius
     sum +=Ti;
   }//for
   float To = sum/sample;
@@ -650,8 +745,8 @@ float altimeterBasePres(int sample){
   float sum = 0;
   
   for (int i=0 ; i<sample ; i++){
-    ms5607.Readout();
-    float Pi = ms5607.GetPres();
+    ms5611.read();
+    float Pi = ms5611.getPressurePascal(); //pascals
     sum +=Pi;
   }//for
   float Po = sum/sample;
@@ -670,7 +765,7 @@ void sendCANaltitude(float alt){
 
   //Adjust altitude into uin32_t 
   //pushes decimals to first 8 bits
-  uint32_t altint = (alt*100);
+  int32_t altint = (alt);
   
   //Start shifting bits (b0 = LSB)
   uint8_t b0 = altint & 0xFF;
