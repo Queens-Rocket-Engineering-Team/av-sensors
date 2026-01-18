@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "TMAG5273A1QDBVT")(type "KiCad")(uri "${KIPRJMOD}/symbols/TMAG5273A1QDBVT.kicad_sym")(options "")(descr ""))
+)
